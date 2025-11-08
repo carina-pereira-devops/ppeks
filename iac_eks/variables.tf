@@ -21,4 +21,7 @@ variable "tags" {
   # Variável com conjunto de pares chave-valor 
   type        = map(any)
   description = "Tags pertencentes aos recursos criados"
+      default = {
+    "Time": "SRE"
+}
 }
