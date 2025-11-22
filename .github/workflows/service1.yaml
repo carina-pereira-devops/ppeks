@@ -64,13 +64,19 @@ jobs:
 # Repo que será a base para o Argo
         - name: Update helm values
           run: |
-            sed -i "s/^tag:.*$/tag: \"${{ env.IMAGE_TAG }}\"/" charts/service1/values.yaml
+            sed -i 's/\(tag: \)".*"/\1"'\"${{ env.IMAGE_TAG }}\"'/ charts/service1/values.yaml
+
 
 # Comitando e enviando a imagem para o repositório
         - name: Commit and push changes
           run: |
             git config user.email "devops79@yahoo.com"
             git config user.name "carina-pereira-devops"
-            git add .
-            git commit -m "Construção da Imagem com sucesso [skip ci]"
-            git push
+            git add charts/service1/values.yaml
+            if git diff --staged --quiet; then
+              echo "Nenhuma alteração para commitar"
+            else git commit -m "Atualiza tag image service1 para ${{ env.IMAGE_TAG }} [skip ci]"
+              git push
+            fi
+
+              			  			
