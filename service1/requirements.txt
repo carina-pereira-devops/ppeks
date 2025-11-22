@@ -7,3 +7,8 @@ opentelemetry-sdk==1.26.0
 opentelemetry-instrumentation-flask==0.47b0
 opentelemetry-instrumentation-requests==0.47b0
 
+
+- name: Update helm values
+  run: |
+    sed -i "s/\(tag: \)\".*\"/\1\"${{ env.IMAGE_TAG }}\"/" charts/service1/values.yaml
+    cat charts/service1/values.yaml
