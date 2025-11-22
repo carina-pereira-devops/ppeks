@@ -64,8 +64,8 @@ jobs:
 # Repo que será a base para o Argo
         - name: Update helm values
           run: |
-            sed -i 's/\(tag: \)".*"/\1"'\"${{ env.IMAGE_TAG }}\"'/ charts/service1/values.yaml
-
+            sed -i "s/\(tag: \)\".*\"/\1\"${{ env.IMAGE_TAG }}\"/" charts/service1/values.yaml
+            cat charts/service1/values.yaml
 
 # Comitando e enviando a imagem para o repositório
         - name: Commit and push changes
