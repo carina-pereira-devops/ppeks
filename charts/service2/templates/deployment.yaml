@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service2
+  labels:
+    app: service2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service2
+  template:
+    metadata:
+      labels:
+        app: service2
+    spec:
+      containers:
+        - name: service2
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}" # Valor a ser substituido no values
+          imagePullPolicy: {{ .Values.image.pullPolicy }} # Valor a ser substituido no values
+          ports:
+            - containerPort: 5001

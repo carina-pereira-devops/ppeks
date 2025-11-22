@@ -1,11 +1,14 @@
-# Nome
+# Infra IaC
 name: "Terraform Workflow"
 
 # Commit na branch main
 on:
-  push:
-    branches:
-      - main
+#  push:          # Se execução automatica
+#    branches:
+#      - main         
+#    paths:               
+#      - 'iac_eks/**'
+  workflow_dispatch: # Habilitando apenas execução manual
 
 # Configurações da AWS
 permissions:
