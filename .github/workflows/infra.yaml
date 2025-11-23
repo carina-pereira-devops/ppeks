@@ -1,5 +1,5 @@
 # Infra IaC
-name: "Terraform Workflow"
+name: "Infra EKS"
 
 # Commit na branch main
 on:
