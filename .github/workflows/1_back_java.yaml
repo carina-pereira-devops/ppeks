@@ -1,5 +1,5 @@
 # Microsserviço
-name: Deploy do Microsserviço 1
+name: Deploy do Backend em Java
 
 on:
 #  push:            # Se execução automática
