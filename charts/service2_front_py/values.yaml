@@ -1,6 +1,6 @@
 image:
   repository: "<aws_account_id>.dkr.ecr.<region>.amazonaws.com/service2"
-  tag: "20251123171906" # Dica do Fabiano na primeira entrevista
+  tag: "20251123214408" # Dica do Fabiano na primeira entrevista
   pullPolicy: IfNotPresent
 
 service: # Melhor estratégia para expor o serviço? Certificação AWS...
