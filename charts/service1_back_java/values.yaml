@@ -1,6 +1,6 @@
 image:
   repository: "<aws_account_id>.dkr.ecr.<region>.amazonaws.com/service1"
-  tag: "20251122225903" # Dica do Fabiano na primeira entrevista, deixar latest para não conflitar na edição do Git.
+  tag: "20251123211429" # Dica do Fabiano na primeira entrevista, deixar latest para não conflitar na edição do Git.
   pullPolicy: IfNotPresent
 
 service: # Melhor estratégia para expor o serviço? Certificação AWS...
