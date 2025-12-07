@@ -1,9 +1,11 @@
+replicaCount: 1
+
 image:
-  repository: "<aws_account_id>.dkr.ecr.<region>.amazonaws.com/service1"
+  repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/back_java"
   tag: "20251123211429" # Dica do Fabiano na primeira entrevista, deixar latest para não conflitar na edição do Git.
   pullPolicy: IfNotPresent
 
 service: # Melhor estratégia para expor o serviço? Certificação AWS...
   type: ClusterIP
-  port: 5001
-  targetPort: 5001
+  port: 8080
+  targetPort: 8080

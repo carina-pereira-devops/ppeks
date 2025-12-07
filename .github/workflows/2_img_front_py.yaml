@@ -1,5 +1,5 @@
 # Microsserviço
-name: Deploy do Frontend em Python 
+name: Construção da imagem do Frontend em Python 
 
 on:
 #  push:            # Se execução automática

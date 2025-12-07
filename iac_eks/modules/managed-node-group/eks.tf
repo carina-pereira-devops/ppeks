@@ -4,7 +4,7 @@ resource "aws_eks_node_group" "eks_managed_node_group" {
   node_role_arn   = aws_iam_role.eks_eks_role.arn
   instance_types  = ["t3.micro"]
   subnet_ids = [
-    #Subnets privedas
+    #Subnets privadas
     var.subnet_private_1a,
     var.subnet_private_1b
   ]

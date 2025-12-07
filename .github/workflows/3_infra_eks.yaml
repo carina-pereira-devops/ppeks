@@ -1,5 +1,5 @@
 # Infra IaC
-name: "Infra EKS"
+name: "Construção da Infra do Cluster EKS"
 
 # Commit na branch main
 on:

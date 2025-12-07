@@ -1,0 +1,74 @@
+# Estrutura para expor serviços publicamente
+name: Deploy ALB Ingress Controller via Helm
+
+on:
+  workflow_dispatch: # Execução manual
+    inputs:
+      action:
+        description: 'Escolha deploy ou destroy'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - destroy
+
+env:
+  AWS_REGION: "us-east-1"
+  EKS_CLUSTER_NAME: "seu-cluster-eks" # Automação para ter o nome do Cluster?
+
+permissions:
+  id-token: write
+  deployments: write
+  contents: write
+  statuses: write
+  actions: write
+  checks: read
+
+jobs:
+  deploy-alb-controller:
+    name: Deploy ALB Ingress Controller
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
+          aws-region: ${{ env.AWS_REGION }}
+
+# Instalação do kubectl no servidor do GitHub para interação com o EKS
+      - name: Install kubectl
+        run: |
+          curl -o kubectl https://s3.us-east-1.amazonaws.com/amazon-eks/1.27.3/2023-09-19/bin/linux/amd64/kubectl
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+
+# Instalação do Helm no servidor do GitHub para deploy no EKS
+      - name: Install Helm
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Configuração do kubeconfig do EKS no servidor do GitHub
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+# Deploy Helm
+      - name: Deploy ALB Ingress Controller via Helm
+        run: |
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update
+          helm upgrade --install aws-alb-ingress-controller eks/aws-alb-ingress-controller \
+            --namespace kube-system \
+            --set clusterName=${{ env.EKS_CLUSTER_NAME }} \
+            --set serviceAccount.create=false \
+            --set serviceAccount.name=aws-alb-ingress-controller
+
+# Remoção Deploy Helm
+      - name: Uninstall ALB Ingress Controller
+        if: github.event.inputs.action == 'destroy'
+        run: |
+          helm uninstall aws-alb-ingress-controller --namespace kube-system
