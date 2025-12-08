@@ -1,5 +1,5 @@
 image:
-  repository: "<aws_account_id>.dkr.ecr.<region>.amazonaws.com/service2"
+  repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/front_py"
   tag: "20251123214408" # Dica do Fabiano na primeira entrevista
   pullPolicy: IfNotPresent
 
