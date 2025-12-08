@@ -15,7 +15,7 @@ on:
 
 env:
   AWS_REGION: "us-east-1"
-  EKS_CLUSTER_NAME: "seu-cluster-eks" # Automação para ter o nome do Cluster?
+  EKS_CLUSTER_NAME: "ppeks-cluster" # Automação para ter o nome do Cluster?
 
 permissions:
   id-token: write

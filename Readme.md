@@ -44,4 +44,33 @@ Também no laboratório anterior, no destroy da infra, a pipeline quebrava por c
 
 Também temos granularidade em qualquer alteração da pasta "iac_eks" podendo ser executada através de uma pipeline específica para a infra.
 
+# Cluster EKS
+
+Validação:
+
+```
+aws eks update-kubeconfig --region us-east-1 --name ppeks-cluster
+Updated context arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster in /home/carina/.kube/config
+
+kubectl config use-context  arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster
+Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
+
+[carina@fedora pp_eks]$ k get nodes
+NAME                         STATUS   ROLES    AGE     VERSION
+ip-10-0-3-23.ec2.internal    Ready    <none>   2m55s   v1.34.2-eks-ecaa3a6
+ip-10-0-4-211.ec2.internal   Ready    <none>   2m57s   v1.34.2-eks-ecaa3a6
+
+[carina@fedora pp_eks]$ k get pods -A
+NAMESPACE     NAME                       READY   STATUS    RESTARTS   AGE
+kube-system   aws-node-97g2d             2/2     Running   0          3m23s
+kube-system   aws-node-c9rvg             2/2     Running   0          3m22s
+kube-system   coredns-7d58d485c9-28q95   1/1     Running   0          6m55s
+kube-system   coredns-7d58d485c9-w4sgm   1/1     Running   0          6m55s
+kube-system   kube-proxy-hmcnj           1/1     Running   0          3m22s
+kube-system   kube-proxy-v4kr7           1/1     Running   0          3m23s
+
+```
+
+
+
 
