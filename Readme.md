@@ -71,6 +71,12 @@ kube-system   kube-proxy-v4kr7           1/1     Running   0          3m23s
 
 ```
 
+# Erros
+
+Erro ao tentar instalar o ALB Controller via Helm:
+
+![OPS](prints/image2.png)
+
 
 
 
