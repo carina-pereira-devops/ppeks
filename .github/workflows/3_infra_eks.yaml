@@ -1,5 +1,5 @@
 # Infra IaC
-name: "Construção da Infra do Cluster EKS"
+name: "Deploy/Destroy da Infra do Cluster EKS"
 
 # Commit na branch main
 on:
