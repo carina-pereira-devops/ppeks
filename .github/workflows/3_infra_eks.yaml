@@ -31,15 +31,11 @@ jobs:
         with:
           terraform_version: 1.8.3
           terraform_wrapper: false # Erro "Too many command line arguments. Did you mean to use -chdir?"
-      - name: Configure AWS credentials  # AWS
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4 #uses: aws-actions/configure-aws-credentials@v1
         with:
-          aws-access-key-id: ${{ secrets.aws_access_key_id }}
-          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
-          aws-region: us-east-1
-        env:
-          aws-access-key-id: ${{ secrets.aws_access_key_id }}
-          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+          role-to-assume: "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
+          aws-region: "us-east-1"
       - name: Read destroy configuration # Validação caso necessário deletar o ambiente
         id: read-destroy-config
         run: |
