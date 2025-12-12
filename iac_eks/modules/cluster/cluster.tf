@@ -31,7 +31,7 @@ resource "aws_eks_cluster" "eks_cluster" {
   )
 }
 
-# Configuração explícita com as permissoões da Role de Criação do Cluster
+# Configuração explícita com as permissões da Role de Criação do Cluster
 resource "aws_eks_access_entry" "github_actions" {
   cluster_name  = aws_eks_cluster.eks_cluster.name
   principal_arn = "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
