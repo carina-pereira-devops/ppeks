@@ -1,5 +1,5 @@
 # Estrutura para expor serviços publicamente
-name: Deploy ALB Ingress Controller via Helm
+name: Deploy via Helm do ALB Ingress Controller
 
 on:
   workflow_dispatch: # Execução manual

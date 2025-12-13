@@ -71,11 +71,21 @@ kube-system   kube-proxy-v4kr7           1/1     Running   0          3m23s
 
 ```
 
-# Erros
+# Erros mapeados durante a construção do cluster
 
-Erro ao tentar instalar o ALB Controller via Helm:
+1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acessar o cluster.
 
-![OPS](prints/image2.png)
+![ERRO](prints/image2.png)
+
+Solução:
+
+Configuração das permissões no arquivo cluster.tf:
+
+```
+
+```
+
+
 
 
 

@@ -1,5 +1,5 @@
 # Microsserviço
-name: Construção da imagem do Backend em Java
+name: Build da imagem do Backend em Java
 
 on:
 #  push:            # Se execução automática
