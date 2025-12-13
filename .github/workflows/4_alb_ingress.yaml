@@ -61,14 +61,14 @@ jobs:
         run: |
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
-          helm upgrade --install aws-alb-ingress-controller eks/aws-alb-ingress-controller \
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller  \
             --namespace kube-system \
             --set clusterName=${{ env.EKS_CLUSTER_NAME }} \
             --set serviceAccount.create=false \
-            --set serviceAccount.name=aws-alb-ingress-controller
+            --set serviceAccount.name=aws-load-balancer-controller
 
 # Remoção Deploy Helm
       - name: Uninstall ALB Ingress Controller
         if: github.event.inputs.action == 'destroy'
         run: |
-          helm uninstall aws-alb-ingress-controller --namespace kube-system
+          helm uninstall aws-load-balancer-controller --namespace kube-system
