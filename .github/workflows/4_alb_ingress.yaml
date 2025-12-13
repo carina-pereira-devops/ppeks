@@ -64,6 +64,7 @@ jobs:
           helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller  \
             --namespace kube-system \
             --set clusterName=${{ env.EKS_CLUSTER_NAME }} \
+		    --set region=${{ env.AWS_REGION }} \
             --set serviceAccount.create=true \
             --set serviceAccount.name=aws-load-balancer-controller
 
