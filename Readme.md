@@ -14,6 +14,29 @@ No uso de IA se faz imprescindível um desenho prévio de toda a arquitetura, be
 
 Uma documentação bem feita (a exemplo do Projeto_Anterior.md, disponível no diretório raiz deste repositório), também traz insumos para análise de IA, o que foi disruptivo para a evolução do projeto. Por padrão IAs fazem a leitura de Readme, então tenha sempre em mente a importância de boas documentações.
 
+# Acesso a AWS
+
+Certifique-se que o mesmo usuário que acessa a console (1), seja o mesmo usuário com acesso via awscli (2), e o mesmo usuário ao qual serão concedidas as permissões de visualização (3):
+
+![USER](prints/image3.png)
+
+1 - Lembrando que ao logar com o usuário root da conta, o que geralmente é o comum, não será possível visualizar, Pods, Services, etc... (isso pode causar confusão).
+
+```
+2 - Acesso via awscli, será com esse usuário que executaremos os comandos via Kubectl:
+[carina@fedora pp_eks]$ aws sts get-caller-identity
+{
+...
+"Arn": "arn:aws:iam::749000351410:user/devops"
+}
+
+```
+
+3 - Permissões atribuídas via IAM (código Terraform), ao mesmo usuário:
+
+![IAM](prints/image4.png)
+
+
 # Laboratório OTEL
 
 Este laboratório evoluiu de acordo com uma experiência anterior, descrita no arquivo Projeto_Anterior.md.
@@ -71,6 +94,54 @@ kube-system   kube-proxy-v4kr7           1/1     Running   0          3m23s
 
 ```
 
+# Features
+
+Instalação manual via kubectl, do deploy de métricas, para coleta de informações de CPU e Memória de Nodes e Pods:
+
+```
+[carina@fedora pp_eks]$ k apply -f ./features/metrics.yaml
+serviceaccount/metrics-server created
+clusterrole.rbac.authorization.k8s.io/system:aggregated-metrics-reader created
+clusterrole.rbac.authorization.k8s.io/system:metrics-server created
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
+service/metrics-server created
+deployment.apps/metrics-server created
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+
+[carina@fedora pp_eks]$ k -n kube-system get deploy
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+coredns          2/2     2            2           17m
+metrics-server   1/1     1            1           5m32s
+
+[carina@fedora pp_eks]$ k -n kube-system get po
+NAME                             READY   STATUS    RESTARTS   AGE
+aws-node-kjn9l                   2/2     Running   0          15m
+aws-node-pswqq                   2/2     Running   0          15m
+coredns-7d58d485c9-4gnwm         1/1     Running   0          18m
+coredns-7d58d485c9-7hdb2         1/1     Running   0          18m
+kube-proxy-gw7n9                 1/1     Running   0          15m
+kube-proxy-mv86m                 1/1     Running   0          15m
+metrics-server-df8589546-vc8zl   1/1     Running   0          5m52s
+
+[carina@fedora pp_eks]$ k top no
+NAME                         CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+ip-10-0-3-73.ec2.internal    27m          1%       342Mi           66%         
+ip-10-0-4-183.ec2.internal   23m          1%       334Mi           65% 
+
+[carina@fedora pp_eks]$ k top po -A
+NAMESPACE     NAME                             CPU(cores)   MEMORY(bytes)   
+kube-system   aws-node-kjn9l                   4m           42Mi            
+kube-system   aws-node-pswqq                   3m           43Mi            
+kube-system   coredns-7d58d485c9-4gnwm         2m           11Mi            
+kube-system   coredns-7d58d485c9-7hdb2         2m           11Mi            
+kube-system   kube-proxy-gw7n9                 1m           20Mi            
+kube-system   kube-proxy-mv86m                 1m           20Mi            
+kube-system   metrics-server-df8589546-vc8zl   3m           17Mi            
+
+```
+
 # Erros mapeados durante a construção do cluster
 
 1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acessar o cluster.
@@ -82,9 +153,7 @@ Solução:
 Configuração das permissões no arquivo cluster.tf:
 
 ```
-
 ```
-
 
 
 

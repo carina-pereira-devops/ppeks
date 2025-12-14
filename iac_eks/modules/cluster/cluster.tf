@@ -31,22 +31,7 @@ resource "aws_eks_cluster" "eks_cluster" {
   )
 }
 
-# Permissões do meu usuário Local:
-resource "aws_eks_access_entry" "devops" {
-  cluster_name  = aws_eks_cluster.eks_cluster.name
-  principal_arn = "arn:aws:iam::749000351410:user/devops"
-  type          = "STANDARD"
-}
 
-resource "aws_eks_access_policy_association" "devops_admin" {
-  cluster_name  = aws_eks_cluster.eks_cluster.name
-  principal_arn = "arn:aws:iam::749000351410:user/devops"
-  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-
-  access_scope {
-    type = "cluster"
-  }
-}
 
 
 
