@@ -110,6 +110,13 @@ service/metrics-server created
 deployment.apps/metrics-server created
 apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
 
+obs.: Em um primeiro deploy, com apenas dois nodes no cluster não haviam recursos para a implementação do recurso (considerando com o deploy do ALB Controller):
+
+Events:
+  Type     Reason            Age    From               Message
+  ----     ------            ----   ----               -------
+  Warning  FailedScheduling  3m34s  default-scheduler  0/2 nodes are available: 2 Too many pods. no new claims to deallocate, preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.
+
 [carina@fedora pp_eks]$ k -n kube-system get deploy
 NAME             READY   UP-TO-DATE   AVAILABLE   AGE
 coredns          2/2     2            2           17m
