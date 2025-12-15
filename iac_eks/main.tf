@@ -22,3 +22,12 @@ module "eks_managed_node_group" {
   subnet_private_1b = module.eks_network.subnet_priv_1b
   tags              = var.tags
 }
+
+module "eks_aws_load_balancer_controller" {
+  source       = "./modules/alb-controller"
+  project_name = var.project_name
+  tags         = var.tags
+  oidc         = module.eks_cluster.oidc
+  cluster_name = module.eks_cluster.cluster_name
+  vpc_id       = module.eks_network.vpc_id
+}
