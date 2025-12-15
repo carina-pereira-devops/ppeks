@@ -14,16 +14,18 @@ No uso de IA se faz imprescindível um desenho prévio de toda a arquitetura, be
 
 Uma documentação bem feita (a exemplo do Projeto_Anterior.md, disponível no diretório raiz deste repositório), também traz insumos para análise de IA, o que foi disruptivo para a evolução do projeto. Por padrão IAs fazem a leitura de Readme, então tenha sempre em mente a importância de boas documentações.
 
+---
+
 # Acesso a AWS
 
-Certifique-se que o mesmo usuário que acessa a console (1), seja o mesmo usuário com acesso via awscli (2), e o mesmo usuário ao qual serão concedidas as permissões de visualização (3):
+Certifique-se que o usuário que acessa a console (1), seja o mesmo usuário com acesso via awscli (2), e o mesmo usuário ao qual serão concedidas as permissões de visualização (3):
 
 ![USER](prints/image3.png)
 
 1 - Lembrando que ao logar com o usuário root da conta, o que geralmente é o comum, não será possível visualizar, Pods, Services, etc... (isso pode causar confusão).
 
+2 - Acesso via awscli, será com esse mesmo usuário que executaremos os comandos via Kubectl:
 ```
-2 - Acesso via awscli, será com esse usuário que executaremos os comandos via Kubectl:
 [carina@fedora pp_eks]$ aws sts get-caller-identity
 {
 ...
@@ -36,6 +38,7 @@ Certifique-se que o mesmo usuário que acessa a console (1), seja o mesmo usuár
 
 ![IAM](prints/image4.png)
 
+---
 
 # Laboratório OTEL
 
@@ -69,7 +72,7 @@ Também temos granularidade em qualquer alteração da pasta "iac_eks" podendo s
 
 # Cluster EKS
 
-Validação:
+Validação e configurações iniciais:
 
 ```
 aws eks update-kubeconfig --region us-east-1 --name ppeks-cluster
@@ -77,21 +80,6 @@ Updated context arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster in /hom
 
 kubectl config use-context  arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster
 Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
-
-[carina@fedora pp_eks]$ k get nodes
-NAME                         STATUS   ROLES    AGE     VERSION
-ip-10-0-3-23.ec2.internal    Ready    <none>   2m55s   v1.34.2-eks-ecaa3a6
-ip-10-0-4-211.ec2.internal   Ready    <none>   2m57s   v1.34.2-eks-ecaa3a6
-
-[carina@fedora pp_eks]$ k get pods -A
-NAMESPACE     NAME                       READY   STATUS    RESTARTS   AGE
-kube-system   aws-node-97g2d             2/2     Running   0          3m23s
-kube-system   aws-node-c9rvg             2/2     Running   0          3m22s
-kube-system   coredns-7d58d485c9-28q95   1/1     Running   0          6m55s
-kube-system   coredns-7d58d485c9-w4sgm   1/1     Running   0          6m55s
-kube-system   kube-proxy-hmcnj           1/1     Running   0          3m22s
-kube-system   kube-proxy-v4kr7           1/1     Running   0          3m23s
-
 ```
 
 # Features
@@ -109,60 +97,101 @@ clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
 service/metrics-server created
 deployment.apps/metrics-server created
 apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+``` 
 
-obs.: Em um primeiro deploy, com apenas dois nodes no cluster não haviam recursos para a implementação do recurso (considerando com o deploy do ALB Controller):
+Obs.: Em um primeiro deploy com apenas dois nodes no cluster, não haviam CPU e Memória suficientes para a implementação do recurso (considerando com o deploy do ALB Controller):
 
+```
+[carina@fedora pp_eks]$ k -n kube-system get deploy
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+aws-load-balancer-controller   2/2     2            2           22m
+coredns                        2/2     2            2           24m
+metrics-server                 0/1     1            0           10m
+
+[carina@fedora pp_eks]$ k -n kube-system describe po metrics-server-df8589546-gr5gp
+...
 Events:
   Type     Reason            Age    From               Message
   ----     ------            ----   ----               -------
   Warning  FailedScheduling  3m34s  default-scheduler  0/2 nodes are available: 2 Too many pods. no new claims to deallocate, preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.
+```
+
+Após a adição de mais um node:
+
+```
+[carina@fedora pp_eks]$ k get no
+NAME                         STATUS   ROLES    AGE   VERSION
+ip-10-0-3-155.ec2.internal   Ready    <none>   21m   v1.34.2-eks-ecaa3a6
+ip-10-0-4-171.ec2.internal   Ready    <none>   36s   v1.34.2-eks-ecaa3a6
+ip-10-0-4-213.ec2.internal   Ready    <none>   21m   v1.34.2-eks-ecaa3a6
 
 [carina@fedora pp_eks]$ k -n kube-system get deploy
-NAME             READY   UP-TO-DATE   AVAILABLE   AGE
-coredns          2/2     2            2           17m
-metrics-server   1/1     1            1           5m32s
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+aws-load-balancer-controller   2/2     2            2           26m
+coredns                        2/2     2            2           28m
+metrics-server                 1/1     1            1           14m
 
-[carina@fedora pp_eks]$ k -n kube-system get po
-NAME                             READY   STATUS    RESTARTS   AGE
-aws-node-kjn9l                   2/2     Running   0          15m
-aws-node-pswqq                   2/2     Running   0          15m
-coredns-7d58d485c9-4gnwm         1/1     Running   0          18m
-coredns-7d58d485c9-7hdb2         1/1     Running   0          18m
-kube-proxy-gw7n9                 1/1     Running   0          15m
-kube-proxy-mv86m                 1/1     Running   0          15m
-metrics-server-df8589546-vc8zl   1/1     Running   0          5m52s
+[carina@fedora pp_eks]$ k get po -A
+NAMESPACE     NAME                                            READY   STATUS    RESTARTS   AGE
+kube-system   aws-load-balancer-controller-68bc9587b7-2zbn4   1/1     Running   0          23m
+kube-system   aws-load-balancer-controller-68bc9587b7-tsxnd   1/1     Running   0          23m
+kube-system   aws-node-2w92l                                  2/2     Running   0          22m
+kube-system   aws-node-8dxv2                                  2/2     Running   0          83s
+kube-system   aws-node-dlkdq                                  2/2     Running   0          22m
+kube-system   coredns-7d58d485c9-29ds5                        1/1     Running   0          25m
+kube-system   coredns-7d58d485c9-rqn5l                        1/1     Running   0          25m
+kube-system   kube-proxy-7qkdd                                1/1     Running   0          22m
+kube-system   kube-proxy-c56sg                                1/1     Running   0          83s
+kube-system   kube-proxy-hhhgw                                1/1     Running   0          22m
+kube-system   metrics-server-df8589546-gr5gp                  1/1     Running   0          11m
+```
 
+Enfim, Métricas de Nodes e Pods:
+
+```
 [carina@fedora pp_eks]$ k top no
 NAME                         CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
-ip-10-0-3-73.ec2.internal    27m          1%       342Mi           66%         
-ip-10-0-4-183.ec2.internal   23m          1%       334Mi           65% 
+ip-10-0-3-155.ec2.internal   31m          1%       379Mi           73%         
+ip-10-0-4-171.ec2.internal   42m          2%       315Mi           61%         
+ip-10-0-4-213.ec2.internal   33m          1%       375Mi           73%    
 
 [carina@fedora pp_eks]$ k top po -A
-NAMESPACE     NAME                             CPU(cores)   MEMORY(bytes)   
-kube-system   aws-node-kjn9l                   4m           42Mi            
-kube-system   aws-node-pswqq                   3m           43Mi            
-kube-system   coredns-7d58d485c9-4gnwm         2m           11Mi            
-kube-system   coredns-7d58d485c9-7hdb2         2m           11Mi            
-kube-system   kube-proxy-gw7n9                 1m           20Mi            
-kube-system   kube-proxy-mv86m                 1m           20Mi            
-kube-system   metrics-server-df8589546-vc8zl   3m           17Mi            
+NAMESPACE     NAME                                            CPU(cores)   MEMORY(bytes)   
+kube-system   aws-load-balancer-controller-68bc9587b7-2zbn4   1m           20Mi            
+kube-system   aws-load-balancer-controller-68bc9587b7-tsxnd   2m           20Mi            
+kube-system   aws-node-2w92l                                  2m           43Mi            
+kube-system   aws-node-8dxv2                                  3m           42Mi            
+kube-system   aws-node-dlkdq                                  3m           43Mi            
+kube-system   coredns-7d58d485c9-29ds5                        2m           11Mi            
+kube-system   coredns-7d58d485c9-rqn5l                        2m           13Mi            
+kube-system   kube-proxy-7qkdd                                1m           18Mi            
+kube-system   kube-proxy-c56sg                                1m           18Mi            
+kube-system   kube-proxy-hhhgw                                1m           19Mi            
+kube-system   metrics-server-df8589546-gr5gp                  3m           18Mi           
 
 ```
 
 # Erros mapeados durante a construção do cluster
 
-1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acessar o cluster.
+1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acesso ao cluster.
 
 ![ERRO](prints/image2.png)
 
 Solução:
 
-Configuração das permissões no arquivo cluster.tf:
+Como o ALB, embora seja uma implementação via Helm, faz a gerência de LBs (infra da AWS) a medida que acontece o "expose" dos deployments, a implementação do Controller que antes era feita via pipe no GitHub Actions, passou a ser feita via modulo no Terraform:
 
 ```
+[carina@fedora pp_eks]$ tree ./iac_eks/modules/alb-controller/
+./iac_eks/modules/alb-controller/
+├── data.tf
+├── helm_alb.tf
+├── iam_policy.json
+├── iam.tf
+├── locals.tf
+├── policy.tf
+├── sa.tf
+└── variables.tf
+
+1 directory, 8 files
 ```
-
-
-
-
-
