@@ -7,5 +7,9 @@ image:
 
 service: # Melhor estratégia para expor o serviço? Certificação AWS...
   type: ClusterIP
-  port: 8080
+  port: 80
   targetPort: 8080
+
+env:
+  POSTGRES_HOST: ""
+  POSTGRES_DB: ""

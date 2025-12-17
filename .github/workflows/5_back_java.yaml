@@ -1,0 +1,53 @@
+name: "Deploy Backend Java no EKS"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::749000351410:role/github-carina-devops-pipe
+          aws-region: us-east-1
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name SEU_CLUSTER_EKS \
+            --region us-east-1
+
+      - name: Ler outputs do RDS
+        id: rds
+        run: |
+          cd rds
+          RDS_HOST=$(terraform output -raw rds_endpoint)
+          RDS_DB=$(terraform output -raw rds_db_name)
+          echo "rds_host=$RDS_HOST" >> $GITHUB_OUTPUT
+          echo "rds_db=$RDS_DB" >> $GITHUB_OUTPUT
+
+      - name: Criar/atualizar Secret com credenciais do banco
+        run: |
+          USERNAME=$(aws ssm get-parameter --name "/app/dev/db/username" --query "Parameter.Value" --output text)
+          PASSWORD=$(aws ssm get-parameter --name "/app/dev/db/password" --with-decryption --query "Parameter.Value" --output text)
+
+          kubectl create secret generic app-db-credentials \
+            --from-literal=SPRING_DATASOURCE_USERNAME=$USERNAME \
+            --from-literal=SPRING_DATASOURCE_PASSWORD=$PASSWORD \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy backend com Helm
+        run: |
+          helm upgrade --install service1 ./helm/service1 \
+            --set env.POSTGRES_HOST=${{ steps.rds.outputs.rds_host }} \
+            --set env.POSTGRES_DB=${{ steps.rds.outputs.rds_db }}
