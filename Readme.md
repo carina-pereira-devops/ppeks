@@ -195,3 +195,19 @@ Como o ALB, embora seja uma implementação via Helm, faz a gerência de LBs (in
 
 1 directory, 8 files
 ```
+
+2 - IA não revisou "com assertividade" que o meu código de criação do RDS, de modo que não tinha TFstate armazenado na AWS, deixando de fazer a gerência de criação/destruição dos recursos, como solicitado:
+
+![TFSTATE](prints/image5.png)
+
+Solução:
+
+"Feeling" ao perceber erros de recursos que já estavam criados. TFSTATE devidamente configurado:
+
+```
+    backend "s3" {
+    bucket = "arquivo-de-estado-tf1"
+    key    = "rds/terraform.tfstate"
+    region = "us-east-1"    
+  }
+```
