@@ -3,4 +3,4 @@ private_subnets = [
   "subnet-0ef720bd932deb291",
   "subnet-070b36a9167e55fd9"
 ]
-project_name   = "meu-projeto"
+project_name   = "ppeks"

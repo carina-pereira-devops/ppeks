@@ -10,7 +10,6 @@ data "aws_ssm_parameter" "db_password" {
 resource "aws_db_instance" "postgres" {
   identifier             = "${var.project_name}-postgres"
   engine                 = "postgres"
-  engine_version         = "15.4"
   instance_class         = "db.t3.micro"  # free tier elegível
   allocated_storage      = 20
 
