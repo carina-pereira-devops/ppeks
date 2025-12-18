@@ -1,9 +1,9 @@
 data "aws_ssm_parameter" "db_username" {
-  name = "/db/username"
+  name = aws_ssm_parameter.db_username.name
 }
 
 data "aws_ssm_parameter" "db_password" {
-  name            = "/db/password"
+  name            = aws_ssm_parameter.db_password.name
   with_decryption = true
 }
 
