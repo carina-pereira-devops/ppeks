@@ -13,7 +13,7 @@ terraform {
   }
   
   backend "s3" {
-    bucket = "arquivo-de-estado"
+    bucket = "tfstate-ppeks"
     key    = "eks/terraform.tfstate"
     region = "us-east-1"    
   }

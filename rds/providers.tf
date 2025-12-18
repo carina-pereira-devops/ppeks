@@ -6,7 +6,7 @@ terraform {
     }
   }
     backend "s3" {
-    bucket = "arquivo-de-estado"
+    bucket = "tfstate-ppeks"
     key    = "rds/terraform.tfstate"
     region = "us-east-1"    
   }
