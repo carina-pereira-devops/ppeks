@@ -16,6 +16,23 @@ Uma documentação bem feita (a exemplo do Projeto_Anterior.md, disponível no d
 
 ---
 
+# Premissas
+
+Criar um bucket S3 na AWS, com nome "tfstate-ppeks" antes de executar as pipelines do Github Actions. Caso deseje um bucket S3 com outro nome, necessário alterar nas configurações.
+
+Alimentar valores manualmente após a criação do EKS:
+
+```
+vpc_id         = "vpc-0e424344843d73a95"
+private_subnets = [
+  "subnet-015a1736387966dfb",
+  "subnet-0da9e8b2ee04052eb"
+]
+project_name   = "ppeks"
+```
+
+---
+
 # Acesso a AWS
 
 Certifique-se que o usuário que acessa a console (1), seja o mesmo usuário com acesso via awscli (2), e o mesmo usuário ao qual serão concedidas as permissões de visualização (3):
