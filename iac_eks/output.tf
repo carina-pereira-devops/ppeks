@@ -1,12 +1,17 @@
 # Alimentar RDS
 
-output "vpc_id" {
-  value = aws_vpc.this.id
+output "eks_vpc_id" {
+  value = aws_vpc.eks_vpc.id
 }
 
-output "private_subnets" {
+output "eks_private_subnets" {
+  description = "Subnets privadas usadas pelo EKS/RDS"
   value = [
-    aws_subnet.private_1a.id,
-    aws_subnet.private_1b.id,
+    aws_subnet.eks_subnet_private_1a.id,
+    aws_subnet.eks_subnet_private_1b.id,
   ]
+}
+
+output "project_name" {
+  value = var.project_name
 }
