@@ -18,3 +18,7 @@ output "subnet_priv_1b" {
 output "vpc_id" {
   value = aws_vpc.eks_vpc.id
 }
+
+output "project_name" {
+  value = "ppeks"
+}
