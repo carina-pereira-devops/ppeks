@@ -187,6 +187,13 @@ kube-system   kube-proxy-hhhgw                                1m           19Mi
 kube-system   metrics-server-df8589546-gr5gp                  3m           18Mi           
 
 ```
+---
+
+# Banco de Dados
+
+Endpoint para conexão via DBeaver.
+
+---
 
 # Erros mapeados durante a construção do cluster
 
