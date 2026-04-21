@@ -101,7 +101,7 @@ Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
 
 # Features
 
-Instalação manual via kubectl, do deploy de métricas, para coleta de informações de CPU e Memória de Nodes e Pods:
+1 - Instalação manual via kubectl, do deploy de métricas, para coleta de informações de CPU e Memória de Nodes e Pods:
 
 ```
 [carina@fedora pp_eks]$ k apply -f ./features/metrics.yaml
@@ -187,68 +187,20 @@ kube-system   kube-proxy-hhhgw                                1m           19Mi
 kube-system   metrics-server-df8589546-gr5gp                  3m           18Mi           
 
 ```
----
 
-# Banco de Dados
+2 - Gerar contexto para IA:
 
-Endpoint para conexão via DBeaver.
+bash features/dump_project.sh . meu_projeto_dump.txt
 
----
+3 - Verificação de recursos em execução na AWS após finalização do Laboratório:
 
-# Erros mapeados durante a construção do cluster
-
-1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acesso ao cluster.
-
-![ERRO](prints/image2.png)
-
-Solução:
-
-Como o ALB, embora seja uma implementação via Helm, faz a gerência de LBs (infra da AWS) a medida que acontece o "expose" dos deployments, a implementação do Controller que antes era feita via pipe no GitHub Actions, passou a ser feita via modulo no Terraform:
-
-```
-[carina@fedora pp_eks]$ tree ./iac_eks/modules/alb-controller/
-./iac_eks/modules/alb-controller/
-├── data.tf
-├── helm_alb.tf
-├── iam_policy.json
-├── iam.tf
-├── locals.tf
-├── policy.tf
-├── sa.tf
-└── variables.tf
-
-1 directory, 8 files
-```
-
-2 - IA não revisou "com assertividade" o meu código de criação do RDS, de modo que não tinha TFstate armazenado na AWS, deixando de fazer a gerência de criação/destruição dos recursos, como solicitado:
-
-![TFSTATE](prints/image5.png)
-
-Solução:
-
-"Feeling" ao perceber erros de recursos que já estavam criados. TFSTATE devidamente configurado:
-
-```
-    backend "s3" {
-    bucket = "arquivo-de-estado-tf1"
-    key    = "rds/terraform.tfstate"
-    region = "us-east-1"    
-  }
-```
+bash features/aws-resource-check.sh
 
 ---
 
-Deleção manual de recursos (despesas extras):
+# Lambda
 
-3 - Deletar Snashot RDS 
-2 - Deletar Imagens e ECRs
-3 - Deletar tfstate e RDS
-
----
-
-# Supérfluos
-
-1 - Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
+Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
 
 A função Lambda `ppeks-health-check` é uma aplicação web serverless que atua como **ponto central de verificação de saúde** dos recursos da infraestrutura do projeto `ppeks`. Ela é exposta publicamente via **Function URL** — ou seja, gera um endpoint HTTP diretamente, sem necessidade de API Gateway.
 
@@ -372,10 +324,60 @@ curl https://<id>.lambda-url.us-east-1.on.aws/
 
 ---
 
-2 - Script que percorre arquivos .tf, para gerar contexto para IA, 
-redirecionando a saída para /tmp/tfsdump.txt:
+# Banco de Dados
 
-bash features/dump_project.sh . meu_projeto_dump.txt
+Endpoint para conexão via DBeaver.
+
+---
+
+# Erros mapeados durante a construção do cluster
+
+1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acesso ao cluster.
+
+![ERRO](prints/image2.png)
+
+Solução:
+
+Como o ALB, embora seja uma implementação via Helm, faz a gerência de LBs (infra da AWS) a medida que acontece o "expose" dos deployments, a implementação do Controller que antes era feita via pipe no GitHub Actions, passou a ser feita via modulo no Terraform:
+
+```
+[carina@fedora pp_eks]$ tree ./iac_eks/modules/alb-controller/
+./iac_eks/modules/alb-controller/
+├── data.tf
+├── helm_alb.tf
+├── iam_policy.json
+├── iam.tf
+├── locals.tf
+├── policy.tf
+├── sa.tf
+└── variables.tf
+
+1 directory, 8 files
+```
+
+2 - IA não revisou "com assertividade" o meu código de criação do RDS, de modo que não tinha TFstate armazenado na AWS, deixando de fazer a gerência de criação/destruição dos recursos, como solicitado:
+
+![TFSTATE](prints/image5.png)
+
+Solução:
+
+"Feeling" ao perceber erros de recursos que já estavam criados. TFSTATE devidamente configurado:
+
+```
+    backend "s3" {
+    bucket = "arquivo-de-estado-tf1"
+    key    = "rds/terraform.tfstate"
+    region = "us-east-1"    
+  }
+```
+
+---
+
+Deleção manual de recursos (despesas extras):
+
+3 - Deletar Snashot RDS 
+2 - Deletar Imagens e ECRs
+3 - Deletar tfstate e RDS
 
 ---
 

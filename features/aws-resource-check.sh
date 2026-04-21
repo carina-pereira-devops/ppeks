@@ -27,7 +27,6 @@ if [ -z "$CLUSTERS" ]; then
 else
   for C in $CLUSTERS; do
     echo -e "$FOUND Cluster: $C"
-    # Node groups
     NGS=$(aws eks list-nodegroups --cluster-name $C --region $REGION --query 'nodegroups' --output text 2>/dev/null)
     for NG in $NGS; do
       echo -e "   $FOUND  NodeGroup: $NG"
@@ -74,6 +73,55 @@ fi
 echo ""
 
 # --------------------------------------------------------------
+# RDS Snapshots (manuais e automáticos)
+# --------------------------------------------------------------
+echo "### RDS Snapshots"
+
+# Snapshots manuais
+SNAPS_MANUAL=$(aws rds describe-db-snapshots \
+  --region $REGION \
+  --snapshot-type manual \
+  --query 'DBSnapshots[*].[DBSnapshotIdentifier,DBInstanceIdentifier,SnapshotCreateTime,AllocatedStorage,Status]' \
+  --output text 2>/dev/null)
+if [ -z "$SNAPS_MANUAL" ]; then
+  echo -e "$OK Nenhum snapshot manual de RDS"
+else
+  echo -e "$FOUND Snapshots MANUAIS encontrados (cobram armazenamento!):"
+  echo "$SNAPS_MANUAL" | while read SNAP_ID DB_ID CREATED STORAGE STATUS; do
+    echo -e "   $FOUND $SNAP_ID | DB: $DB_ID | $STORAGE GB | $STATUS | criado: $CREATED"
+  done
+fi
+
+# Snapshots automáticos (gerados pelo destroy do Terraform com skip_final_snapshot=false)
+SNAPS_AUTO=$(aws rds describe-db-snapshots \
+  --region $REGION \
+  --snapshot-type automated \
+  --query 'DBSnapshots[*].[DBSnapshotIdentifier,DBInstanceIdentifier,SnapshotCreateTime,AllocatedStorage,Status]' \
+  --output text 2>/dev/null)
+if [ -z "$SNAPS_AUTO" ]; then
+  echo -e "$OK Nenhum snapshot automático de RDS"
+else
+  echo -e "$WARN Snapshots AUTOMÁTICOS encontrados (gratuitos dentro do free tier, mas verifique):"
+  echo "$SNAPS_AUTO" | while read SNAP_ID DB_ID CREATED STORAGE STATUS; do
+    echo -e "   $WARN $SNAP_ID | DB: $DB_ID | $STORAGE GB | $STATUS | criado: $CREATED"
+  done
+fi
+
+# Snapshots gerados no final do destroy (final snapshots)
+SNAPS_FINAL=$(aws rds describe-db-snapshots \
+  --region $REGION \
+  --query "DBSnapshots[?contains(DBSnapshotIdentifier, 'final') || contains(DBSnapshotIdentifier, '$PROJECT')].[DBSnapshotIdentifier,DBInstanceIdentifier,SnapshotCreateTime,AllocatedStorage,Status]" \
+  --output text 2>/dev/null)
+if [ ! -z "$SNAPS_FINAL" ]; then
+  echo -e "$FOUND Snapshots com 'final' ou '$PROJECT' no nome (provavelmente gerados pelo destroy):"
+  echo "$SNAPS_FINAL" | while read SNAP_ID DB_ID CREATED STORAGE STATUS; do
+    echo -e "   $FOUND $SNAP_ID | DB: $DB_ID | $STORAGE GB | $STATUS | criado: $CREATED"
+    echo -e "         Para deletar: aws rds delete-db-snapshot --db-snapshot-identifier $SNAP_ID --region $REGION"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
 # NAT Gateways (cobram por hora mesmo sem tráfego!)
 # --------------------------------------------------------------
 echo "### NAT Gateways"
@@ -93,7 +141,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------
-# Elastic IPs não associados (cobram quando não estão em uso)
+# Elastic IPs não associados
 # --------------------------------------------------------------
 echo "### Elastic IPs não associados"
 EIPS=$(aws ec2 describe-addresses \
@@ -184,7 +232,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------
-# S3 Buckets (tfstate)
+# S3 Buckets
 # --------------------------------------------------------------
 echo "### S3 Buckets"
 BUCKETS=$(aws s3api list-buckets \
@@ -253,5 +301,9 @@ echo "  3. EC2 / Node Groups  → depende do tipo (t3.micro = ~\$0.01/hora)"
 echo "  4. RDS                → db.t3.micro = ~\$0.02/hora"
 echo "  5. Load Balancer ALB  → ~\$0.008/hora + dados"
 echo "  6. Elastic IPs soltos → ~\$0.005/hora quando não associados"
+echo "  7. RDS Snapshots      → \$0.095/GB-mês acima do free tier"
+echo ""
+echo "  Para deletar um snapshot manualmente:"
+echo "  aws rds delete-db-snapshot --db-snapshot-identifier <ID> --region $REGION"
 echo -e "$SEP\n"
 
