@@ -238,6 +238,12 @@ Solução:
 
 ---
 
+# Supérfluos
+
+Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
+
+---
+
 # Implementações
 
 https://landscape.cncf.io/
