@@ -1,9 +1,5 @@
 # ============================================================
-# IAM — IRSA Role para o Karpenter
-# O Karpenter precisa de permissões para:
-#   - Criar/terminar EC2 (spot instances)
-#   - Ler SSM (AMIs)
-#   - Passar a node IAM role para as instâncias
+# IAM — IRSA Role para o Karpenter Controller
 # ============================================================
 
 data "aws_caller_identity" "current" {}
@@ -13,7 +9,7 @@ locals {
   oidc_id = replace(var.oidc, "https://", "")
 }
 
-# ---- IAM Role do Karpenter (IRSA) ----
+# ---- IAM Role do Karpenter Controller (IRSA) ----
 resource "aws_iam_role" "karpenter_controller" {
   name = "${var.project_name}-karpenter-controller"
 
@@ -45,35 +41,49 @@ resource "aws_iam_policy" "karpenter_controller" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      # Permissões para gerenciar instâncias EC2 (spot + on-demand)
+
+      # --------------------------------------------------------
+      # EKS — detectar CIDR do cluster e configurações de rede
+      # OBRIGATÓRIO no Karpenter v1.x — sem isso: "Failed to
+      # detect the cluster CIDR" e EC2NodeClass fica NotReady
+      # --------------------------------------------------------
+      {
+        Effect = "Allow"
+        Action = [
+          "eks:DescribeCluster"
+        ]
+        Resource = "arn:aws:eks:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
+      },
+
+      # --------------------------------------------------------
+      # EC2 — criar e gerenciar instâncias (spot + on-demand)
+      # --------------------------------------------------------
       {
         Effect = "Allow"
         Action = [
           "ec2:RunInstances",
-          "ec2:CreateLaunchTemplate",
           "ec2:CreateFleet",
+          "ec2:CreateLaunchTemplate",
+          "ec2:DeleteLaunchTemplate",
+          "ec2:TerminateInstances",
+          "ec2:CreateTags",
           "ec2:DescribeImages",
           "ec2:DescribeInstances",
-          "ec2:DescribeSecurityGroups",
-          "ec2:DescribeSubnets",
           "ec2:DescribeInstanceTypes",
           "ec2:DescribeInstanceTypeOfferings",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
           "ec2:DescribeAvailabilityZones",
           "ec2:DescribeSpotPriceHistory",
           "ec2:DescribeLaunchTemplates",
-          "ec2:DeleteLaunchTemplate",
-          "ec2:TerminateInstances",
-          "ec2:CreateTags"
+          "ec2:DescribeVpcs"
         ]
         Resource = "*"
       },
-      # Passar a role para as instâncias que o Karpenter criar
-      {
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
-        Resource = aws_iam_role.karpenter_node.arn
-      },
-      # Spot — criar/cancelar spot instance requests
+
+      # --------------------------------------------------------
+      # EC2 — spot instance requests
+      # --------------------------------------------------------
       {
         Effect = "Allow"
         Action = [
@@ -83,19 +93,49 @@ resource "aws_iam_policy" "karpenter_controller" {
         ]
         Resource = "*"
       },
-      # Pricing (para calcular custo de spot)
+
+      # --------------------------------------------------------
+      # IAM — passar a node role para as instâncias EC2
+      # --------------------------------------------------------
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = aws_iam_role.karpenter_node.arn
+      },
+
+      # --------------------------------------------------------
+      # IAM — ler o Instance Profile dos nodes
+      # Necessário para o Karpenter confirmar InstanceProfileReady
+      # --------------------------------------------------------
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:GetInstanceProfile"
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:instance-profile/${var.project_name}-karpenter-node"
+      },
+
+      # --------------------------------------------------------
+      # Pricing — calcular custo para escolher melhor spot
+      # --------------------------------------------------------
       {
         Effect   = "Allow"
         Action   = ["pricing:GetProducts"]
         Resource = "*"
       },
+
+      # --------------------------------------------------------
       # SSM — buscar AMIs otimizadas para EKS
+      # --------------------------------------------------------
       {
         Effect   = "Allow"
         Action   = ["ssm:GetParameter"]
         Resource = "arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*"
       },
-      # SQS — para interrupção de spot (recomendado)
+
+      # --------------------------------------------------------
+      # SQS — fila de interrupção de spot
+      # --------------------------------------------------------
       {
         Effect = "Allow"
         Action = [
