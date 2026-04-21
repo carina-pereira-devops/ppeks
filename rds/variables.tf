@@ -5,5 +5,6 @@ variable "region" {
 
 variable "project_name" {
   type        = string
+  description = "Nome do Projeto"
+  default = "ppeks"
 }
-
