@@ -1,6 +1,6 @@
 ![OPS](prints/image1.png)
 
-# Esta documentação está em construção, então as informações ainda não estão na ordem correta, nem com as devidas evidências!
+# Documentação está em construção, e as informações ainda não estão na ordem correta, nem com as devidas evidências!
 
 ---
 
@@ -235,3 +235,9 @@ Solução:
     region = "us-east-1"    
   }
 ```
+
+---
+
+# Implementações
+
+https://landscape.cncf.io/
