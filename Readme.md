@@ -242,6 +242,11 @@ Solução:
 
 Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
 
+Script que percorre arquivos .tf, para gerar contexto para IA, 
+redirecionando a saída para /tmp/tfsdump.txt:
+
+tfsdump.sh
+
 ---
 
 # Implementações
