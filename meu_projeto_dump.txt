@@ -1,0 +1,4584 @@
+=================================================================
+  PROJECT DUMP — ter 21 abr 2026 14:29:06 -03
+  Diretório: /home/carina/Downloads/_projetos/pp_eks
+=================================================================
+
+## ESTRUTURA DO PROJETO (tree)
+```
+.
+├── charts
+│   ├── java-back
+│   │   ├── Chart.yaml
+│   │   ├── templates
+│   │   │   ├── deployment.yaml
+│   │   │   └── service.yaml
+│   │   └── values.yaml
+│   └── service2_front_py
+│       ├── Chart.yaml
+│       ├── templates
+│       │   ├── deployment.yaml
+│       │   └── service.yaml
+│       └── values.yaml
+├── docs
+│   ├── Estrutura-DevOps.md
+│   └── Projeto_Anterior.md
+├── features
+│   ├── aws-resource-check.sh
+│   ├── dump_project.sh
+│   └── metrics.yaml
+├── iac_eks
+│   ├── destroy_config.json
+│   ├── main.tf
+│   ├── modules
+│   │   ├── alb-controller
+│   │   │   ├── data.tf
+│   │   │   ├── helm_alb.tf
+│   │   │   ├── iam_policy.json
+│   │   │   ├── iam.tf
+│   │   │   ├── locals.tf
+│   │   │   ├── policy.tf
+│   │   │   ├── sa.tf
+│   │   │   └── variables.tf
+│   │   ├── cluster
+│   │   │   ├── cluster.tf
+│   │   │   ├── iam.tf
+│   │   │   ├── oidc.tf
+│   │   │   ├── outputs.tf
+│   │   │   ├── sg-rule.tf
+│   │   │   └── variables.tf
+│   │   ├── managed-node-group
+│   │   │   ├── eks.tf
+│   │   │   ├── iam.tf
+│   │   │   └── variables.tf
+│   │   └── network
+│   │       ├── igw.tf
+│   │       ├── ngw.tf
+│   │       ├── output.tf
+│   │       ├── private.tf
+│   │       ├── public.tf
+│   │       ├── region.tf
+│   │       ├── variables.tf
+│   │       └── vpc.tf
+│   ├── outputs.tf
+│   ├── providers.tf
+│   └── variables.tf
+├── iac_lambda
+│   ├── data.tf
+│   ├── destroy_config.json
+│   ├── lambda_function.py
+│   ├── main.tf
+│   ├── outputs.tf
+│   ├── providers.tf
+│   └── variables.tf
+├── meu_projeto_dump.txt
+├── rds
+│   ├── data.tf
+│   ├── destroy_config.json
+│   ├── outputs.tf
+│   ├── providers.tf
+│   ├── rds.tf
+│   ├── security-group.tf
+│   ├── ssm-parameters.tf
+│   ├── subnet-group.tf
+│   └── variables.tf
+├── Readme.md
+├── service1_back_java
+│   ├── Dockerfile
+│   ├── pom.xml
+│   ├── requirements.txt
+│   └── src
+│       ├── main
+│       │   ├── java
+│       │   │   └── io
+│       │   │       └── novatec
+│       │   │           └── todobackend
+│       │   │               └── TodobackendApplication.java
+│       │   └── resources
+│       │       ├── application-prod.properties
+│       │       └── application.properties
+│       └── test
+│           └── java
+│               └── io
+│                   └── novatec
+│                       └── todobackend
+│                           └── TodobackendApplicationIntegrationTests.java
+└── service2_front_py
+    ├── app.py
+    ├── Dockerfile
+    ├── notes
+    ├── open-api.json
+    ├── requirements.txt
+    └── templates
+        └── index.html
+```
+
+## CONTEÚDO DOS ARQUIVOS
+
+---
+### charts/java-back/Chart.yaml
+```yaml
+apiVersion: v2
+name: java-back
+description: Helm para java-back
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+```
+
+---
+### charts/java-back/templates/deployment.yaml
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-back
+  labels:
+    app: java-back
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: java-back
+  template:
+    metadata:
+      labels:
+        app: java-back
+    spec:
+      containers:
+        - name: java-back
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POSTGRES_HOST
+              value: "{{ .Values.env.POSTGRES_HOST }}"
+            - name: POSTGRES_DB
+              value: "{{ .Values.env.POSTGRES_DB }}"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-db-credentials
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-db-credentials
+                  key: SPRING_DATASOURCE_PASSWORD
+```
+
+---
+### charts/java-back/templates/service.yaml
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-back
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+  selector:
+    app: java-back
+
+```
+
+---
+### charts/java-back/values.yaml
+```yaml
+replicaCount: 1
+
+image:
+  repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/back_java"
+  tag: "20260421020043" # Dica do Fabiano na primeira entrevista, deixar latest para não conflitar na edição do Git.
+  pullPolicy: IfNotPresent
+
+service: # Melhor estratégia para expor o serviço? Certificação AWS...
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+env:
+  POSTGRES_HOST: ""
+  POSTGRES_DB: ""
+
+```
+
+---
+### charts/service2_front_py/Chart.yaml
+```yaml
+apiVersion: v2
+name: service2
+description: Helm para service2
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+```
+
+---
+### charts/service2_front_py/templates/deployment.yaml
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service2
+  labels:
+    app: service2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service2
+  template:
+    metadata:
+      labels:
+        app: service2
+    spec:
+      containers:
+        - name: service2
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}" # Valor a ser substituido no values
+          imagePullPolicy: {{ .Values.image.pullPolicy }} # Valor a ser substituido no values
+          ports:
+            - containerPort: 5001
+
+```
+
+---
+### charts/service2_front_py/templates/service.yaml
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: service2
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }} # Valores a serem substituidos no values
+  selector:
+    app: service2
+
+```
+
+---
+### charts/service2_front_py/values.yaml
+```yaml
+image:
+  repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/front_py"
+  tag: "20251123214408" # Dica do Fabiano na primeira entrevista
+  pullPolicy: IfNotPresent
+
+service: # Melhor estratégia para expor o serviço? Certificação AWS...
+  type: ClusterIP
+  port: 5002
+  targetPort: 5002
+
+```
+
+---
+### docs/Estrutura-DevOps.md
+```markdown
+# Estrutura DevOps Senior — Ambiente Corporativo do Zero
+
+## Comparação da Construção deste projeto com um ambiente Corporativo
+Antes de escrever qualquer linha de código, um DevOps Senior pensa em três pilares:
+
+1. **Separação de responsabilidades** — cada coisa no seu lugar, cada pipeline com um propósito
+2. **Segurança por padrão** — nunca como afterthought
+3. **Rastreabilidade** — qualquer pessoa do time consegue entender o que foi feito, quando e por quê
+
+---
+
+## Fase 0 — Antes de criar qualquer recurso
+
+Em um ambiente corporativo real, antes de abrir o terminal, existe:
+
+### Definição de contas AWS (Multi-Account Strategy)
+
+```
+AWS Organization
+├── Management Account     → billing, SCPs, nada roda aqui
+├── Security Account       → GuardDuty, Security Hub, logs centralizados
+├── Shared Services Account → ECR, Route53, Certificate Manager
+└── Workload Accounts
+    ├── dev                → ambiente de desenvolvimento
+    ├── staging            → homologação
+    └── prod               → produção
+```
+
+> No seu laboratório você usa uma conta única — o que é correto para estudo.
+> Em produção corporativa, workloads nunca rodam na mesma conta que o billing.
+
+### Definição de repositórios (separação por domínio)
+
+Em vez de um único repositório com tudo, o padrão corporativo é:
+
+```
+github.com/empresa/
+├── infra-platform/        → Terraform base: VPC, EKS, RDS, IAM
+├── infra-apps/            → Helm charts de todas as aplicações
+├── service-back-java/     → APENAS o código do backend Java
+├── service-front-py/      → APENAS o código do frontend Python
+├── service-go/            → APENAS o código do microsserviço Go
+└── gitops-config/         → ArgoCD ApplicationSets, valores por ambiente
+```
+
+**Por quê separado?** Porque times diferentes têm permissões diferentes:
+- Time de plataforma → acessa `infra-platform`
+- Time de dev → acessa apenas o repositório do seu serviço
+- Ninguém acessa `gitops-config` diretamente — só o ArgoCD
+
+> No seu projeto, você optou por um monorepo (tudo em `ppeks/`), que é válido
+> para laboratório e times pequenos. Muitas empresas também usam monorepo
+> (Google, Meta) — o importante é a separação interna de pastas e pipelines.
+
+---
+
+## Fase 1 — Fundação de Segurança (IAM / OIDC)
+
+### O que você já tem (correto ✅)
+```
+role/github-carina-devops-pipe → assume via OIDC (sem chaves de acesso)
+```
+
+### Como seria corporativo
+
+```hcl
+# Múltiplas roles com mínimo privilégio
+iam/
+├── role-github-infra.tf      → só pode criar/destruir infra (EKS, RDS, VPC)
+├── role-github-deploy.tf     → só pode fazer kubectl apply e helm upgrade
+├── role-github-ecr.tf        → só pode fazer push no ECR
+└── role-github-readonly.tf   → só leitura, para pipelines de validação
+```
+
+**Princípio do menor privilégio:**
+
+| Pipeline | Role | Permissões |
+|---|---|---|
+| `1_img_*.yaml` (build) | `role-github-ecr` | ECR push apenas |
+| `3_infra_eks.yaml` | `role-github-infra` | EKS, VPC, IAM |
+| `5_deploy_*.yaml` | `role-github-deploy` | EKS describe/apply, SSM read |
+| Leitura de outputs | `role-github-readonly` | S3 read (tfstate) |
+
+> No seu projeto, uma única role faz tudo. Funciona, mas em produção
+> corporativa o comprometimento de uma pipeline não deve comprometer toda a infra.
+
+### Branch Protection (obrigatório em produção)
+
+```yaml
+# Configuração no GitHub (Settings → Branches)
+main:
+  required_pull_request_reviews:
+    required_approving_review_count: 2
+  required_status_checks:
+    - terraform-validate
+    - security-scan
+  enforce_admins: true
+  restrictions:
+    push: []          # ninguém faz push direto na main
+```
+
+---
+
+## Fase 2 — Estrutura de Repositório Corporativo
+
+### Como seria o seu `ppeks/` em padrão corporativo
+
+```
+infra-platform/                    ← repositório separado de infra
+├── .github/
+│   └── workflows/
+│       ├── 1_plan.yaml            ← apenas terraform plan (em PRs)
+│       ├── 2_apply_eks.yaml       ← apply do EKS (merge na main)
+│       ├── 3_apply_rds.yaml       ← apply do RDS
+│       └── 4_apply_lambda.yaml    ← apply do Lambda
+│
+├── environments/
+│   ├── dev/
+│   │   ├── eks.tfvars
+│   │   └── rds.tfvars
+│   └── prod/
+│       ├── eks.tfvars
+│       └── rds.tfvars
+│
+├── modules/
+│   ├── network/                   ← igual ao seu ✅
+│   ├── cluster/                   ← igual ao seu ✅
+│   ├── managed-node-group/        ← igual ao seu ✅
+│   ├── alb-controller/            ← igual ao seu ✅
+│   ├── rds/                       ← transformar pasta rds/ em módulo
+│   └── lambda/                    ← novo módulo
+│
+└── stacks/
+    ├── eks/
+    │   ├── main.tf                ← chama módulos
+    │   ├── providers.tf
+    │   └── backend.tf             ← tfstate no S3 + DynamoDB lock
+    └── rds/
+        ├── main.tf
+        └── backend.tf
+```
+
+### O detalhe crítico: DynamoDB para lock do tfstate
+
+```hcl
+# backend.tf — padrão corporativo
+terraform {
+  backend "s3" {
+    bucket         = "tfstate-ppeks"
+    key            = "eks/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true          # ← criptografia obrigatória
+    dynamodb_table = "tfstate-lock" # ← evita apply simultâneo (race condition)
+  }
+}
+```
+
+> Sem o DynamoDB lock, duas pipelines rodando ao mesmo tempo podem corromper
+> o tfstate. Em produção isso é crítico.
+
+---
+
+## Fase 3 — Pipeline Corporativa (GitFlow)
+
+### Fluxo de uma mudança em produção
+
+```
+developer → feature branch
+    ↓
+    PR aberto → pipeline roda:
+        ✅ terraform validate
+        ✅ terraform plan (output no PR como comentário)
+        ✅ tfsec / checkov (security scan)
+        ✅ tflint (linting)
+    ↓
+    Code review (2 aprovações)
+    ↓
+    Merge na main → pipeline roda:
+        ✅ terraform apply (ambiente dev)
+    ↓
+    Tag de release → pipeline roda:
+        ✅ terraform apply (ambiente prod)
+```
+
+### Como seria o `3_infra_eks.yaml` corporativo
+
+```yaml
+name: "EKS Infrastructure"
+
+on:
+  pull_request:
+    paths: ['stacks/eks/**', 'modules/**']
+  push:
+    branches: [main]
+    paths: ['stacks/eks/**', 'modules/**']
+
+jobs:
+  validate:
+    name: Validate & Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+
+      - name: Configure AWS credentials (readonly)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::749000351410:role/github-readonly"
+          aws-region: "us-east-1"
+
+      - name: Terraform Init
+        run: cd stacks/eks && terraform init
+
+      - name: Terraform Validate
+        run: cd stacks/eks && terraform validate
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Security Scan (tfsec)
+        uses: aquasecurity/tfsec-action@v1.0.0
+
+      - name: Terraform Plan
+        id: plan
+        run: cd stacks/eks && terraform plan -out=plan.tfplan -no-color
+        continue-on-error: true
+
+      - name: Post Plan no PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `#### Terraform Plan 📖
+            \`\`\`${{ steps.plan.outputs.stdout }}\`\`\``;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  apply:
+    name: Terraform Apply
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production    # ← requer aprovação manual no GitHub
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (infra role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::749000351410:role/github-infra"
+          aws-region: "us-east-1"
+
+      - name: Terraform Apply
+        run: cd stacks/eks && terraform apply -auto-approve
+```
+
+---
+
+## Fase 4 — GitOps com ArgoCD (padrão corporativo)
+
+### O fluxo que você já usa é o correto ✅
+
+```
+developer faz push do código
+    ↓
+pipeline de imagem (1_img_*.yaml):
+    - build da imagem
+    - push no ECR
+    - atualiza tag no values.yaml   ← você já faz isso!
+    - commit com [skip ci]          ← você já faz isso!
+    ↓
+ArgoCD detecta mudança no values.yaml
+    ↓
+ArgoCD aplica automaticamente no EKS
+```
+
+### ApplicationSet corporativo (múltiplos ambientes)
+
+```yaml
+# gitops-config/applicationset.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ppeks-services
+  namespace: argocd
+spec:
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - service: service1_back_java
+                - service: service2_front_py
+                - service: service3_go
+          - list:
+              elements:
+                - env: dev
+                  namespace: ppeks-dev
+                - env: prod
+                  namespace: ppeks-prod
+  template:
+    metadata:
+      name: "{{service}}-{{env}}"
+    spec:
+      project: ppeks
+      source:
+        repoURL: https://github.com/carina-pereira-devops/ppeks
+        targetRevision: HEAD
+        path: "charts/{{service}}"
+        helm:
+          valueFiles:
+            - "values.yaml"
+            - "values-{{env}}.yaml"   # valores por ambiente
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+```
+
+---
+
+## Fase 5 — Segurança em Camadas (Defense in Depth)
+
+### Camadas que um ambiente corporativo implementa
+
+```
+Camada 1 — AWS Organizations / SCPs
+    └── Impede recursos em regiões não autorizadas
+    └── Impede desabilitar CloudTrail
+
+Camada 2 — IAM (você já tem ✅)
+    └── OIDC sem chaves de acesso estáticas
+    └── Roles com mínimo privilégio
+
+Camada 3 — Rede
+    └── VPC com subnets privadas (você já tem ✅)
+    └── Security Groups restritivos (você já tem ✅)
+    └── RDS em subnet privada, sem acesso público
+    └── EKS nodes em subnets privadas (você já tem ✅)
+
+Camada 4 — Kubernetes (RBAC)
+    └── Namespaces por equipe/ambiente
+    └── NetworkPolicies (quem pode falar com quem)
+    └── Pod Security Standards (non-root, read-only filesystem)
+    └── Secrets via External Secrets Operator (SSM → K8s Secret)
+
+Camada 5 — Imagens
+    └── ECR Image Scanning habilitado
+    └── Imagens base não-root
+    └── Distroless ou Alpine (superfície mínima)
+
+Camada 6 — Runtime
+    └── Falco (detecção de comportamento anômalo)
+    └── OPA/Kyverno (políticas de admission)
+
+Camada 7 — Auditoria
+    └── CloudTrail em todas as regiões
+    └── AWS Config (drift detection)
+    └── GuardDuty (threat detection)
+```
+
+---
+
+## Comparativo: Seu Projeto Atual vs. Corporativo
+
+| Prática | Seu projeto atual | Corporativo | Prioridade |
+|---|---|---|---|
+| OIDC sem chaves estáticas | ✅ | ✅ | Crítico |
+| Tfstate no S3 | ✅ | ✅ | Crítico |
+| DynamoDB lock no tfstate | ❌ | ✅ | Alta |
+| Terraform modules | ✅ | ✅ | Alta |
+| destroy_config.json | ✅ criativo | ❌ usa environments | Média |
+| Branch protection + PR | ❌ | ✅ | Alta |
+| Terraform plan no PR | ❌ | ✅ | Alta |
+| Security scan (tfsec) | ❌ | ✅ | Alta |
+| Múltiplas roles IAM | ❌ (1 role faz tudo) | ✅ | Média |
+| GitOps com ArgoCD | ✅ (planejado) | ✅ | Alta |
+| Values por ambiente | ❌ | ✅ | Média |
+| ECR Image Scanning | ❌ | ✅ | Média |
+| NetworkPolicies K8s | ❌ | ✅ | Média |
+| External Secrets Operator | ❌ (usa SSM direto) | ✅ | Média |
+| Multi-account AWS | ❌ | ✅ | Baixa (lab) |
+
+---
+
+## Roadmap sugerido para o seu laboratório
+
+### Agora (V1) — o que você está fazendo
+- ✅ EKS funcionando
+- ✅ RDS funcionando
+- ✅ ALB Controller
+- 🔄 Deploy dos microsserviços (Java, Python, Go)
+- 🔄 OTel Collector + Prometheus
+
+### Próximo passo (V2) — boas práticas de pipeline
+- Adicionar `dynamodb_table` no backend do tfstate
+- Adicionar `terraform plan` como comentário nos PRs
+- Adicionar `tfsec` nas pipelines de infra
+- Branch protection na `main`
+
+### Depois (V3) — GitOps maduro
+- ArgoCD com ApplicationSet por ambiente
+- `values-dev.yaml` e `values-prod.yaml` separados
+- External Secrets Operator (SSM → K8s Secret automático)
+
+### Avançado (V4) — segurança em runtime
+- Kyverno para políticas de admission
+- Falco para detecção de ameaças
+- ECR scan obrigatório antes do deploy
+
+---
+
+## Conclusão
+
+Seu projeto já segue práticas que muitas empresas não seguem:
+- OIDC ao invés de chaves de acesso estáticas
+- Terraform modular
+- Separação clara entre infra e deploy
+- GitOps com ArgoCD como fonte de verdade
+
+As gaps principais para chegar no padrão corporativo são:
+1. **DynamoDB lock** no tfstate (simples de adicionar)
+2. **PR com terraform plan automático** (muda a cultura de trabalho)
+3. **Roles IAM separadas** por responsabilidade
+4. **Branch protection** na main
+
+Estas melhorias transformam o laboratório em um portfólio que impressiona em entrevistas de DevOps Senior. 🚀
+
+```
+
+---
+### docs/Projeto_Anterior.md
+```markdown
+# Laboratório - Aplicação
+
+O mesmo consiste em uma aplicação em Python, com dois endpoints, nas respectivas portas:
+
+1 - Porta 8000/tcp
+
+Aplicação que recebe comentários em texto. Como a mesma não está disponibilizada através de um frontend as requisições serão feitas diretamente a API.
+
+Exemplos de uso:
+
+```
+# matéria 1
+curl -sv localhost:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"alice@example.com","comment":"first post!","content_id":1}'
+curl -sv localhost:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"alice@example.com","comment":"ok, now I am gonna say something more useful","content_id":1}'
+curl -sv localhost:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"bob@example.com","comment":"I agree","content_id":1}'
+
+# matéria 2
+curl -sv localhost:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"bob@example.com","comment":"I guess this is a good thing","content_id":2}'
+curl -sv localhost:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"charlie@example.com","comment":"Indeed, dear Bob, I believe so as well","content_id":2}'
+curl -sv localhost:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"eve@example.com","comment":"Nah, you both are wrong","content_id":2}'
+
+# listagem matéria 1
+curl -sv localhost:8000/api/comment/list/1
+
+# listagem matéria 2
+curl -sv localhost:8000/api/comment/list/2
+```
+
+Dados coletados durante o Laboratório:
+
+```
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"alice@example.com","comment":"first post!","content_id":1}'
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> POST /api/comment/new HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> Content-Type: application/json
+> Content-Length: 68
+> 
+* Empty reply from server
+* Closing connection
+
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"alice@example.com","comment":"ok, now I am gonna say something more useful","content_id":1}'
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> POST /api/comment/new HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> Content-Type: application/json
+> Content-Length: 101
+> 
+* Empty reply from server
+* Closing connection
+
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"bob@example.com","comment":"I agree","content_id":1}'
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> POST /api/comment/new HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> Content-Type: application/json
+> Content-Length: 62
+> 
+* Empty reply from server
+* Closing connection
+
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"bob@example.com","comment":"I guess this is a good thing","content_id":2}'
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> POST /api/comment/new HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> Content-Type: application/json
+> Content-Length: 83
+> 
+* Empty reply from server
+* Closing connection
+
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"charlie@example.com","comment":"Indeed, dear Bob, I believe so as well","content_id":2}'
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> POST /api/comment/new HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> Content-Type: application/json
+> Content-Length: 97
+> 
+* Empty reply from server
+* Closing connection
+
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"eve@example.com","comment":"Nah, you both are wrong","content_id":2}'
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> POST /api/comment/new HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> Content-Type: application/json
+> Content-Length: 78
+> 
+* Empty reply from server
+* Closing connection
+
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/list/1
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> GET /api/comment/list/1 HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> 
+* Empty reply from server
+* Closing connection
+
+[carina@fedora ekspp]$ curl -sv a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000/api/comment/list/2
+* Host a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 34.192.6.19, 35.168.80.67
+*   Trying 34.192.6.19:8000...
+* Connected to a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com (34.192.6.19) port 8000
+> GET /api/comment/list/2 HTTP/1.1
+> Host: a814ceeca59784f9ca861a8bb40339fb-2090287217.us-east-1.elb.amazonaws.com:8000
+> User-Agent: curl/8.6.0
+> Accept: */*
+> 
+* Empty reply from server
+* Closing connection
+```
+
+2 - Porta 7000/tcp
+
+Aplicação envia métricas através do coletor do Prometheus.
+
+Exemplos de uso:
+
+```
+curl -v http://localhost:7000/metrics
+```
+
+Dados coletados durante o Laboratório:
+
+```
+*   Trying ::1:7000...
+* TCP_NODELAY set
+* connect to ::1 port 7000 failed: Connection refused
+*   Trying 127.0.0.1:7000...
+* TCP_NODELAY set
+* Connected to localhost (127.0.0.1) port 7000 (#0)
+> GET /metrics HTTP/1.1
+> Host: localhost:7000
+> User-Agent: curl/7.68.0
+> Accept: */*
+> 
+* Mark bundle as not supporting multiuse
+* HTTP 1.0, assume close after body
+< HTTP/1.0 200 OK
+< Date: Mon, 30 Jun 2025 01:41:21 GMT
+< Server: WSGIServer/0.2 CPython/3.8.10
+< Content-Type: text/plain; version=0.0.4; charset=utf-8
+< Content-Length: 2148
+< 
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 289.0
+python_gc_objects_collected_total{generation="1"} 107.0
+python_gc_objects_collected_total{generation="2"} 0.0
+# HELP python_gc_objects_uncollectable_total Uncollectable objects found during GC
+# TYPE python_gc_objects_uncollectable_total counter
+python_gc_objects_uncollectable_total{generation="0"} 0.0
+python_gc_objects_uncollectable_total{generation="1"} 0.0
+python_gc_objects_uncollectable_total{generation="2"} 0.0
+# HELP python_gc_collections_total Number of times this generation was collected
+# TYPE python_gc_collections_total counter
+python_gc_collections_total{generation="0"} 64.0
+python_gc_collections_total{generation="1"} 5.0
+python_gc_collections_total{generation="2"} 0.0
+# HELP python_info Python platform information
+# TYPE python_info gauge
+python_info{implementation="CPython",major="3",minor="8",patchlevel="10",version="3.8.10"} 1.0
+# HELP process_virtual_memory_bytes Virtual memory size in bytes.
+# TYPE process_virtual_memory_bytes gauge
+process_virtual_memory_bytes 1.88637184e+08
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 2.65216e+07
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1.75124752607e+09
+# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
+# TYPE process_cpu_seconds_total counter
+process_cpu_seconds_total 0.2
+# HELP process_open_fds Number of open file descriptors.
+# TYPE process_open_fds gauge
+process_open_fds 6.0
+# HELP process_max_fds Maximum number of open file descriptors.
+# TYPE process_max_fds gauge
+process_max_fds 65536.0
+# HELP app_requests_total Total de requisições processadas
+# TYPE app_requests_total counter
+app_requests_total 320.0
+# HELP app_requests_created Total de requisições processadas
+# TYPE app_requests_created gauge
+app_requests_created 1.7512475265861325e+09
+* Closing connection 0
+```
+
+# Laboratório - CI_CD via Github Actions
+
+O código da aplicação, bem como as instruções são abstraídos em um Dockerfile:
+
+```
+FROM ubuntu:20.04
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y python3.9 python3.9-dev pip
+
+# Configurando diretório atual para o diretório /app a ser executado no container
+COPY ./app /app
+
+# Instalando dependências
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Expondo porta da aplicação
+EXPOSE 8000
+
+# Comando de Inicialização
+WORKDIR /app
+CMD cd /app;  python3 api.py 
+```
+
+Através da pipeline previamente configurada, disponibilizada no diretório padrão do Git .github/workflows, será criada uma imagem a ser armazanada em um repositório no ECR na AWS.
+
+Evidência do repositório: <img src="https://github.com/carina-pereira-devops/appeks/blob/868c5a1020d4e3830dfa9da034e00f1296823633/prints/5.png" alt="ECR">
+
+# Laboratório - Infra na AWS criada via Terraform
+
+Estrutura dos diretórios de acordo com este repositório, onde os recursos serão modularizados.
+
+```
+iac_eks/
+├── destroy_config.json
+├── locals.tf
+├── modules
+│   ├── argo
+│   │   └── main.tf
+│   ├── aws-load-balancer-controller
+│   │   ├── data.tf
+│   │   ├── helm.tf
+│   │   ├── iam_policy.json
+│   │   ├── iam.tf
+│   │   ├── locals.tf
+│   │   ├── policy.tf
+│   │   ├── serviceaccount.tf
+│   │   └── variables.tf
+│   ├── cluster
+│   │   ├── cluster.tf
+│   │   ├── iam.tf
+│   │   ├── oidc.tf
+│   │   ├── outputs.tf
+│   │   ├── sg-rule.tf
+│   │   └── variables.tf
+│   ├── managed-node-group
+│   │   ├── eks.tf
+│   │   ├── iam.tf
+│   │   └── variables.tf
+│   ├── network
+│   │   ├── igw.tf
+│   │   ├── ngw.tf
+│   │   ├── output.tf
+│   │   ├── private.tf
+│   │   ├── public.tf
+│   │   ├── region.tf
+│   │   ├── variables.tf
+│   │   └── vpc.tf
+│   └── waf
+│       └── main.tf
+├── modules.tf
+├── provider.tf
+├── terraform.tfvars
+└── variables.tf
+```
+
+Os custos com os testes e resolução de problemas (tshoot) durante os testes são satisfatórios.
+
+<img src="https://github.com/carina-pereira-devops/appeks/blob/cbd88f8ce0d5f0fdcbcc04b65c7022e47b5e137a/prints/12.png" alt="AWS">
+
+Importante lembrar também a importância da escolha de recursos. Na imagem acima, notamos que os custos com as instâncias EC2 (nodes que hospedam os Pods) são relevantes. Por isso desde o ínício do Laboratório mensuramos a utilização de CPU/Memória dos Pods, para que os mesmos fossem executados com folga, porém sem desperdícios.
+
+# Laboratório - Implementações
+
+A imagem construída na etapa de CICD, será deploiada em um cluster EKS, no qual também terá as seguintes implementações:
+
+1 - ArgoCD, tendo o Git como única fonte de verdade. Esta implementação é feita via Helm juntamente com o Terraform, sendo apenas a customização do recurso (argo.yaml) sendo feita manualmente. No mesmo diretório, teremos o artefato para a implementação da aplicação explanada na primeira etapa.
+
+```
+[carina@fedora ekspp]$ tree app_values/
+app_values/
+├── app.yaml
+└── argo.yaml
+```
+
+Abaixo o exemplo de sincronismo entre o Argo e o Git, durante o deploy de uma nova versão da aplicação: <img src="https://github.com/carina-pereira-devops/appeks/blob/4462cc0fdd9b533129da2abdfddf258e9ea436e3/prints/4.png" alt="Argo">
+
+2 - A implementação do Prometheus Server que será feita via Helm manualmente. <img src="https://github.com/carina-pereira-devops/appeks/blob/cbd88f8ce0d5f0fdcbcc04b65c7022e47b5e137a/prints/9.png" alt="Prometheus">
+
+Obs.: Será feita a adição no ConfigMap customizado das configurações do Prometheus, para que o mesmo receba as métricas que coletamos na porta 7000 da aplicação, conforme o print: <img src="https://github.com/carina-pereira-devops/appeks/blob/be94c4856e1cb1e455aba4c37872019239a67139/prints/13.png" alt="CM">
+
+O Grafana criará as Dashs com as métricas envidas pelo Prometheus:
+
+<img src="https://github.com/carina-pereira-devops/appeks/blob/cbd88f8ce0d5f0fdcbcc04b65c7022e47b5e137a/prints/10.png" alt="Pr-Gr">
+
+3 - A implementação do Grafana que será feita via Helm manualmente. <img src="https://github.com/carina-pereira-devops/appeks/blob/5187a309ae2575295dd71ab67dee32e64ef3ee8f/prints/8.png" alt="Grafana">
+
+O resultado esperado será a análise do comportamento da aplicação, a medida que a mesma recebe as requisições:<img src="https://github.com/carina-pereira-devops/appeks/blob/cbd88f8ce0d5f0fdcbcc04b65c7022e47b5e137a/prints/11.png" alt="Dash">
+
+# Execuções manuais (futuras automações)
+
+```
+1 - Criação da Infra via IaC
+
+2 - Construção da imagem da aplicação IaC
+
+Atualizando context do cluster:
+aws eks update-kubeconfig --region us-east-1 --name ekspp-cluster
+kubectl config use-context  arn:aws:eks:us-east-1:535002861869:cluster/ekspp-cluster
+
+Validação:
+kubectl get po -A
+kubectl get no
+
+Alias:
+alias k='kubectl'
+
+Deploy manual da aplicação:
+kubectl apply -f app_values/app.yaml
+
+Credenciais do Argo para configuração do Projeto
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath={.data.password} | base64 -d
+
+Apenas exemplos (não são as credenciais atuais):
+admin 
+cbJidwERE1rGrH7m
+
+Endpoint do service para acesso ao Argo:
+kubectl -n argocd get svc
+
+Informações solicitadas:
+Repo:
+https://github.com/carina-pereira-devops/appeks
+Path:
+app_values
+Branch:
+main 
+Nome da aplicação
+python
+Namespace
+app 
+
+Obs.: Caso a aplicação não esteja operacional o projeto no Argo não é criado.
+
+Endpoint da aplicação:
+kubectl get svc -n app
+NAME             TYPE           CLUSTER-IP      EXTERNAL-IP                                                               PORT(S)                         AGE
+python-service   LoadBalancer   172.20.91.248   aca1723546f354b6d8896916d01ce0fd-1707209365.us-east-1.elb.amazonaws.com   8000:32616/TCP,7000:32515/TCP   19m
+
+Requisições:
+# matéria 1
+curl -sv <endpoint>:8000 -X POST -H 'Content-Type: application/json' -d '{"email":"alice@example.com","comment":"first post!","content_id":1}'
+curl -sv <endpoint>:8000 -X POST -H 'Content-Type: application/json' -d '{"email":"alice@example.com","comment":"ok, now I am gonna say something more useful","content_id":1}'
+curl -sv <endpoint>:8000 -X POST -H 'Content-Type: application/json' -d '{"email":"bob@example.com","comment":"I agree","content_id":1}'
+# matéria 2
+curl -sv <endpoint>:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"bob@example.com","comment":"I guess this is a good thing","content_id":2}'
+curl -sv <endpoint>:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"charlie@example.com","comment":"Indeed, dear Bob, I believe so as well","content_id":2}'
+curl -sv <endpoint>:8000/api/comment/new -X POST -H 'Content-Type: application/json' -d '{"email":"eve@example.com","comment":"Nah, you both are wrong","content_id":2}'
+# listagem matéria 1
+curl -sv <endpoint>:8000/api/comment/list/1
+# listagem matéria 2
+curl -sv <endpoint>:8000/api/comment/list/2
+
+Forçando parada da aplicação para validação das requisições:
+kubectl -n app delete po python-59c697dfdf-bw8sg --force --grace-period 0
+
+Não há execução na saida:
+curl -sv aca1723546f354b6d8896916d01ce0fd-1707209365.us-east-1.elb.amazonaws.com:8000/api/comment/list/1
+* Host aca1723546f354b6d8896916d01ce0fd-1707209365.us-east-1.elb.amazonaws.com:8000 was resolved.
+* IPv6: (none)
+* IPv4: 54.210.178.46, 50.16.221.30
+*   Trying 54.210.178.46:8000...
+
+Instalação do curl no Pod/Container da aplicação:
+kubectl -n app exec -ti  python-68796f44c7-hldh6 -- /bin/bash
+
+Execução no Pod/Container:
+apt install curl 
+
+Validação:
+kubectl -n app exec  python-68796f44c7-hldh6 -- curl http://localhost:7000/metrics
+
+Instalação para coleta de Métricas do Cluster, a medida que os recursos são implementados:
+kubectl apply -f recursos/metrics.yaml
+
+Instalação do prometheus via linha de comando:
+helm install prometheus prometheus-community/kube-prometheus-stack --namespace app
+
+Obs.: Validação é feita consultando todos os Pods com a label que referencia o deploy do Prometheus.
+
+kubectl --namespace app get pods -l "release=prometheus"
+NAME                                                   READY   STATUS    RESTARTS   AGE
+prometheus-kube-prometheus-operator-54c9b77c65-8nlcw   1/1     Running   0          2m51s
+prometheus-kube-state-metrics-7f5f75c85d-5wrp4         1/1     Running   0          2m51s
+prometheus-prometheus-node-exporter-nsf6f              1/1     Running   0          2m51s
+prometheus-prometheus-node-exporter-wdg7f              1/1     Running   0          2m51s
+
+Na instalação da pilha do Prometheus, já vem a implementação do Grafana.
+
+Apenas validar se é a credencial padrão:
+kubectl --namespace app get secrets prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+
+Apenas exemplos (não são as credenciais atuais):
+admin
+prom-operator
+
+A implementação sugere o port-forward (requer conhecimento de Kubernetes para entendimento de como e qual serviço será exposto):
+export POD_NAME=$(kubectl --namespace app get pod -l "app.kubernetes.io/name=grafana,app.kubernetes.io/instance=prometheus" -oname)
+kubectl --namespace app port-forward $POD_NAME 3000
+
+Porém será feita a edição do service e a alteração do ClusterIp para LoadBalancer, para acesso no navegador:
+kubectl -n app edit svc grafana
+service/grafana edited
+Obs.: informar o endpoint no CM do Prometheus
+
+Obs.: A título de informação caso fosse necessário expor a aplicação via linha de comando:
+kubectl expose deployment grafana --type=LoadBalancer --port=80 --name=grafana
+kubectl expose deployment <nome_do_deployment> --type=LoadBalancer --port=<porta_de_exposição> --name=<nome_do_serviço>
+
+O Grafana criará as Dashs de acordo com as métricas envidas pelo Prometheus.
+
+Para que o Prometheus envie as métricas se faz necessário algumas configurações:
+
+1 - Configurar o prometheus para receber as métricas do endpoint através do arquivo:
+/etc/prometheus/prometheus.yml
+
+2 - Configurar Prometheus para coletar métricas do Cluster.
+
+Porém como não conseguimos alterar as configurações que já vem no container, a configuração será feita através:
+1 - Configuração de acesso RBAC através do arquivo recursos/clusterRole.yaml:
+[carina@fedora ekspp]$ kubectl apply -f recursos/clusterRole.yaml 
+clusterrole.rbac.authorization.k8s.io/prometheus created
+clusterrolebinding.rbac.authorization.k8s.io/prometheus created
+
+2 - Customização das consfigurações através de um ConfigMap localizado em recursos/cm.yaml:
+[carina@fedora ekspp]$ kubectl apply -f recursos/cm.yaml 
+configmap/prometheus-server-conf created
+
+3 - Uma nova implementação do prometheus-server, localizado em recursos/deploy.yaml:
+[carina@fedora ekspp]$ kubectl apply -f recursos/deploy.yaml 
+deployment.apps/prometheus-deployment created
+
+Obs.: No item 3 faremos a configuração para exportar as métricas que coletamos com a biblioteca prometheus_client, da aplicação em python.
+
+Edição do service e a alteração do ClusterIp para LoadBalancer, para acesso no navegador:
+kubectl -n app edit svc prometheus-kube-prometheus-prometheus
+service/prometheus-kube-prometheus-prometheus edited
+Obs.: informar o endpoint no CM do Prometheus
+```
+
+# Validações:
+
+ALB Controller é uma implementação via Helm que gerencia os ALBs. 
+
+Semelhante ao Protocolo Arp que atua na camada 2,5 traduzindo Ip para MAC.
+
+Quando um service do tipo LoadBalancer do Kubernetes expoẽ uma aplicação, automaticamente um LB é criado, e quando finaliza o LB é encerrado. <img src="ttps://github.com/carina-pereira-devops/appeks/blob/099aed66c15aedf9cfd5420dac1c9b93c76dcb00/prints/1.png" alt="ALB">
+
+Detalhe sobe instância t3.medium (padrão na subida do cluster): <img src="https://github.com/carina-pereira-devops/appeks/blob/099aed66c15aedf9cfd5420dac1c9b93c76dcb00/prints/3.png" alt="T3">
+
+Foram coletadas métricas durante os testes, para justificativa de aumento ou redução dos recursos do cluster:
+
+Pods:
+
+```
+NAMESPACE     NAME                                                 CPU(cores)   MEMORY(bytes)   
+app           grafana-577575669d-rzcgr                             3m           77Mi            
+app           prometheus-kube-state-metrics-57d654d7bf-mv5l2       2m           15Mi            
+app           prometheus-prometheus-node-exporter-5kxhv            1m           3Mi             
+app           prometheus-prometheus-node-exporter-cj9m5            1m           3Mi             
+app           prometheus-prometheus-node-exporter-vkw9z            1m           3Mi             
+app           prometheus-prometheus-node-exporter-w6q5m            1m           3Mi             
+app           prometheus-prometheus-pushgateway-784c485d55-vrmsk   1m           6Mi             
+argocd        argocd-application-controller-0                      1m           25Mi            
+argocd        argocd-applicationset-controller-696b6668f-n4rfm     1m           21Mi            
+argocd        argocd-dex-server-c68dfbb6-qlwfg                     1m           19Mi            
+argocd        argocd-notifications-controller-f55767bc9-hglt9      1m           18Mi            
+argocd        argocd-redis-6465fc4f75-vp5b5                        2m           2Mi             
+argocd        argocd-repo-server-5c5cb94ff8-kshqs                  1m           21Mi            
+argocd        argocd-server-5c976fcf44-qpjnd                       2m           25Mi            
+kube-system   aws-load-balancer-controller-78f7564788-4gqsw        2m           21Mi            
+kube-system   aws-load-balancer-controller-78f7564788-sw45v        1m           19Mi            
+kube-system   aws-node-4kqlh                                       3m           54Mi            
+kube-system   aws-node-klhwc                                       3m           57Mi            
+kube-system   aws-node-p5fql                                       3m           54Mi            
+kube-system   aws-node-zq9x9                                       3m           55Mi            
+kube-system   coredns-5d849c4789-dr8j8                             2m           13Mi            
+kube-system   coredns-5d849c4789-p9zpw                             2m           13Mi            
+kube-system   kube-proxy-5mhvx                                     2m           12Mi            
+kube-system   kube-proxy-5zq8j                                     1m           12Mi            
+kube-system   kube-proxy-nztmq                                     2m           12Mi            
+kube-system   kube-proxy-t9g9x                                     2m           12Mi            
+kube-system   metrics-server-db4f45b97-smg9w                       6m           16Mi            
+```
+
+Nodes:
+
+```
+NAME                         CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+ip-10-0-3-14.ec2.internal    21m          1%       490Mi           14%         
+ip-10-0-3-157.ec2.internal   30m          1%       576Mi           17%         
+ip-10-0-4-130.ec2.internal   25m          1%       497Mi           15%         
+ip-10-0-4-95.ec2.internal    34m          1%       458Mi           13%         
+```
+
+# Situações que impactaram no tempo da entrega:
+
+1 - Implementações via Helm, conflito de versões das implementações dos Charts via IaC Terraform.<img src="https://github.com/carina-pereira-devops/appeks/blob/099aed66c15aedf9cfd5420dac1c9b93c76dcb00/prints/7.png" alt="Erro">
+
+Implementação do Prometheus, necessita de storage de persistência, exemplo de saída de acordo com os Eventos do Cluster:
+
+```
+3m4s        Normal    FailedBinding             persistentvolumeclaim/prometheus-server                   no persistent volumes available for this claim and no storage class is set
+9m10s       Normal    EnsuringLoadBalancer      service/prometheus-server                                 Ensuring load balancer
+9m9s        Warning   UnAvailableLoadBalancer   service/prometheus-server                                 There are no available nodes for LoadBalancer
+9m9s        Normal    ScalingReplicaSet         deployment/prometheus-server                              Scaled up replica set prometheus-server-b48bbcb5c from 0 to 1
+9m8s        Normal    EnsuredLoadBalancer       service/prometheus-server                                 Ensured load balancer
+8m13s       Normal    UpdatedLoadBalancer       service/prometheus-server                                 Updated load balancer with new hosts
+3m4s        Normal    FailedBinding             persistentvolumeclaim/storage-prometheus-alertmanager-0   no persistent volumes available for this claim and no storage class is set
+```
+
+Na descrição do service via Helm, essas eram as classes configuradas:
+
+```
+kubectl describe pvc prometheus-server
+               volume.beta.kubernetes.io/storage-provisioner: ebs.csi.eks.amazonaws.com
+               volume.kubernetes.io/selected-node: ip-10-0-3-99.ec2.internal
+               volume.kubernetes.io/storage-provisioner: ebs.csi.eks.amazonaws.com
+```
+
+Obs.: Lembrando que em uma implementação de volumes no kubernetes, primeiramente definimo a StorageClass (sc), na sequência o PersistentVolume (pv), e finalmente o PersistentVolumeClaim (pvc).
+
+2 - Implementações via artefatos do Kubernetes (yaml), falta de implementações CRD no cluster EKS.
+
+Saídas das implementações:
+
+```
+no matches for kind "Ingress"            in version "extensions/v1beta1"                ensure CRDs are installed first
+no matches for kind "ClusterRole"        in version "rbac.authorization.k8s.io/v1beta1" ensure CRDs are installed first
+no matches for kind "ClusterRoleBinding" in version "rbac.authorization.k8s.io/v1beta1" ensure CRDs are installed first
+```
+
+Listando CRDs disponíveis:
+
+```
+kubectl get crd
+NAME                                         CREATED AT
+cninodes.vpcresources.k8s.aws                2025-06-28T21:38:03Z
+eniconfigs.crd.k8s.amazonaws.com             2025-06-28T21:39:50Z
+ingressclassparams.elbv2.k8s.aws             2025-06-28T21:42:37Z
+policyendpoints.networking.k8s.aws           2025-06-28T21:38:03Z
+securitygrouppolicies.vpcresources.k8s.aws   2025-06-28T21:38:03Z
+targetgroupbindings.elbv2.k8s.aws            2025-06-28T21:42:37Z
+```
+
+# Questionamentos:
+
+1 - Quais boas práticas para o Código IaC:
+
+    Implementações via Terraform
+
+    Implementações via Helm
+
+    Implementações via artefatos
+
+    Implementações via Ansible
+
+2 - Como instalar crd, como exemplo networking.k8s.io/v1?
+
+# Melhorias futuras:
+
+1 - Autenticação via Role, mesmo para IaC via Github Actions.
+
+Saída na tentativa da conexão com o cluster criado recentemente via CiCd:
+
+```
+"Unhandled Error" err="couldn't get current server API group list: the server has asked for the client to provide credentials"
+```
+
+Autenticação via Role, com acesso aos Workloads do Cluster, mesmo com criação via Github Actions.
+
+Detalhe das configurações de acesso ao EKS: <img src="https://github.com/carina-pereira-devops/appeks/blob/099aed66c15aedf9cfd5420dac1c9b93c76dcb00/prints/6.png" alt="Acesso">
+
+2 - Traefik como ingress do kubernetes, instanciando apenas um LB, configurando as rotas para as demais requisições. <img src="https://github.com/carina-pereira-devops/appeks/blob/caf887d81889a363612bb5315ee33d9186550a75/prints/2.png" alt="Traefik">
+
+A implementação e configuração prévia do Traefik, eliminará a exposição manual dos serviços.
+
+Obs.: Exemplo de configuração manual:
+
+Criação manual do recurso, uma vez que o CRD não está implementando no Cluster:
+
+```
+kubectl -n prometheus create ingress prometheus --rule="/prometheus=prometheus-service:9090"
+```
+
+Anotação para que o recurso seja utilizado:
+
+```
+kubectl -n prometheus annotate ingress prometheus kubernetes.io/ingress.class=traefik
+```
+
+Obs.: Embora tenha sido sugerida esta implementação, devido ao tempo disponibilizado, os serviços principais foram expostos através do ALB Controller.
+
+3 - Monitoramento Opentelemetry:
+
+Web store: http://localhost:8080/
+
+Grafana: http://localhost:8080/grafana/
+
+Load Generator UI: http://localhost:8080/loadgen/
+
+Jaeger UI: http://localhost:8080/jaeger/ui/
+
+Flagd configurator UI: http://localhost:8080/feature
+
+4 - Script shell para as etapas manuais da aplicação.
+
+# Referências utilizadas na construção deste Laboratório:
+Terraform para AWS, Mateus Muller (Udemy)
+
+https://spacelift.io/blog/argocd-terraform
+
+https://medium.com/@habbema/monitorando-aplica%C3%A7%C3%B5es-python-com-prometheus-e-grafana-020a69ffafa8
+
+https://devopscube.com/setup-prometheus-monitoring-on-kubernetes
+
+https://github.com/techiescamp/kubernetes-prometheus
+
+Sugestão para formatação de Markdown: https://stackedit.io/app#
+
+
+```
+
+---
+### features/aws-resource-check.sh
+```bash
+#!/bin/bash
+# ==============================================================
+# aws-resource-check.sh — Lista recursos ppeks ainda ativos na AWS
+# Uso: bash aws-resource-check.sh
+# Região: us-east-1 (ajuste AWS_REGION se necessário)
+# ==============================================================
+
+REGION="us-east-1"
+PROJECT="ppeks"
+SEP="=================================================================="
+WARN="\e[33m[ATENÇÃO]\e[0m"
+OK="\e[32m[OK]\e[0m"
+FOUND="\e[31m[ATIVO]\e[0m"
+
+echo -e "\n$SEP"
+echo "  AWS Resource Check — projeto: $PROJECT"
+echo "  Região: $REGION | $(date)"
+echo -e "$SEP\n"
+
+# --------------------------------------------------------------
+# EKS
+# --------------------------------------------------------------
+echo "### EKS Clusters"
+CLUSTERS=$(aws eks list-clusters --region $REGION --query 'clusters' --output text 2>/dev/null)
+if [ -z "$CLUSTERS" ]; then
+  echo -e "$OK Nenhum cluster EKS ativo"
+else
+  for C in $CLUSTERS; do
+    echo -e "$FOUND Cluster: $C"
+    # Node groups
+    NGS=$(aws eks list-nodegroups --cluster-name $C --region $REGION --query 'nodegroups' --output text 2>/dev/null)
+    for NG in $NGS; do
+      echo -e "   $FOUND  NodeGroup: $NG"
+    done
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# EC2 — Instâncias rodando
+# --------------------------------------------------------------
+echo "### EC2 Instâncias rodando"
+EC2=$(aws ec2 describe-instances \
+  --region $REGION \
+  --filters "Name=instance-state-name,Values=running,stopped" \
+  --query 'Reservations[*].Instances[*].[InstanceId,InstanceType,State.Name,Tags[?Key==`Name`].Value|[0]]' \
+  --output text 2>/dev/null)
+if [ -z "$EC2" ]; then
+  echo -e "$OK Nenhuma instância EC2 ativa"
+else
+  echo -e "$FOUND Instâncias encontradas:"
+  echo "$EC2" | while read ID TYPE STATE NAME; do
+    echo -e "   $FOUND $ID | $TYPE | $STATE | $NAME"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# RDS
+# --------------------------------------------------------------
+echo "### RDS Instâncias"
+RDS=$(aws rds describe-db-instances \
+  --region $REGION \
+  --query 'DBInstances[*].[DBInstanceIdentifier,DBInstanceClass,DBInstanceStatus,Engine]' \
+  --output text 2>/dev/null)
+if [ -z "$RDS" ]; then
+  echo -e "$OK Nenhuma instância RDS ativa"
+else
+  echo -e "$FOUND RDS encontrado:"
+  echo "$RDS" | while read ID CLASS STATUS ENGINE; do
+    echo -e "   $FOUND $ID | $CLASS | $STATUS | $ENGINE"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# NAT Gateways (cobram por hora mesmo sem tráfego!)
+# --------------------------------------------------------------
+echo "### NAT Gateways"
+NATS=$(aws ec2 describe-nat-gateways \
+  --region $REGION \
+  --filter "Name=state,Values=available,pending" \
+  --query 'NatGateways[*].[NatGatewayId,State,Tags[?Key==`Name`].Value|[0]]' \
+  --output text 2>/dev/null)
+if [ -z "$NATS" ]; then
+  echo -e "$OK Nenhum NAT Gateway ativo"
+else
+  echo -e "$FOUND NAT Gateways encontrados (cobram ~\$0.045/hora cada!):"
+  echo "$NATS" | while read ID STATE NAME; do
+    echo -e "   $FOUND $ID | $STATE | $NAME"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# Elastic IPs não associados (cobram quando não estão em uso)
+# --------------------------------------------------------------
+echo "### Elastic IPs não associados"
+EIPS=$(aws ec2 describe-addresses \
+  --region $REGION \
+  --query 'Addresses[?AssociationId==null].[AllocationId,PublicIp,Tags[?Key==`Name`].Value|[0]]' \
+  --output text 2>/dev/null)
+if [ -z "$EIPS" ]; then
+  echo -e "$OK Nenhum Elastic IP solto"
+else
+  echo -e "$FOUND Elastic IPs não associados (cobram quando não usados!):"
+  echo "$EIPS" | while read ALLOC IP NAME; do
+    echo -e "   $FOUND $ALLOC | $IP | $NAME"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# Load Balancers
+# --------------------------------------------------------------
+echo "### Load Balancers (ALB/NLB)"
+LBS=$(aws elbv2 describe-load-balancers \
+  --region $REGION \
+  --query 'LoadBalancers[*].[LoadBalancerName,Type,State.Code,DNSName]' \
+  --output text 2>/dev/null)
+if [ -z "$LBS" ]; then
+  echo -e "$OK Nenhum Load Balancer ativo"
+else
+  echo -e "$FOUND Load Balancers encontrados:"
+  echo "$LBS" | while read NAME TYPE STATE DNS; do
+    echo -e "   $FOUND $NAME | $TYPE | $STATE"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# Lambda
+# --------------------------------------------------------------
+echo "### Lambda Functions"
+LAMBDAS=$(aws lambda list-functions \
+  --region $REGION \
+  --query 'Functions[*].[FunctionName,Runtime,LastModified]' \
+  --output text 2>/dev/null)
+if [ -z "$LAMBDAS" ]; then
+  echo -e "$OK Nenhuma Lambda ativa"
+else
+  echo -e "$FOUND Lambdas encontradas:"
+  echo "$LAMBDAS" | while read NAME RUNTIME MODIFIED; do
+    echo -e "   $FOUND $NAME | $RUNTIME | modificada: $MODIFIED"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# ECR Repositórios
+# --------------------------------------------------------------
+echo "### ECR Repositórios"
+ECRS=$(aws ecr describe-repositories \
+  --region $REGION \
+  --query 'repositories[*].[repositoryName,createdAt]' \
+  --output text 2>/dev/null)
+if [ -z "$ECRS" ]; then
+  echo -e "$OK Nenhum repositório ECR"
+else
+  echo -e "$FOUND ECR repositórios (armazenamento cobrado):"
+  echo "$ECRS" | while read NAME CREATED; do
+    echo -e "   $FOUND $NAME | criado: $CREATED"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# VPCs não default
+# --------------------------------------------------------------
+echo "### VPCs (não-default)"
+VPCS=$(aws ec2 describe-vpcs \
+  --region $REGION \
+  --filters "Name=isDefault,Values=false" \
+  --query 'Vpcs[*].[VpcId,CidrBlock,Tags[?Key==`Name`].Value|[0]]' \
+  --output text 2>/dev/null)
+if [ -z "$VPCS" ]; then
+  echo -e "$OK Nenhuma VPC customizada"
+else
+  echo -e "$FOUND VPCs customizadas encontradas:"
+  echo "$VPCS" | while read ID CIDR NAME; do
+    echo -e "   $FOUND $ID | $CIDR | $NAME"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# S3 Buckets (tfstate)
+# --------------------------------------------------------------
+echo "### S3 Buckets"
+BUCKETS=$(aws s3api list-buckets \
+  --query 'Buckets[*].[Name,CreationDate]' \
+  --output text 2>/dev/null)
+if [ -z "$BUCKETS" ]; then
+  echo -e "$OK Nenhum bucket S3"
+else
+  echo -e "$WARN Buckets S3 (verifique se ainda são necessários):"
+  echo "$BUCKETS" | while read NAME DATE; do
+    echo -e "   $WARN $NAME | criado: $DATE"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# IAM Roles do projeto
+# --------------------------------------------------------------
+echo "### IAM Roles do projeto ($PROJECT)"
+ROLES=$(aws iam list-roles \
+  --query "Roles[?contains(RoleName, '$PROJECT')].[RoleName,CreateDate]" \
+  --output text 2>/dev/null)
+if [ -z "$ROLES" ]; then
+  echo -e "$OK Nenhuma IAM Role com '$PROJECT' no nome"
+else
+  echo -e "$WARN IAM Roles encontradas:"
+  echo "$ROLES" | while read NAME DATE; do
+    echo -e "   $WARN $NAME | criada: $DATE"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# CloudWatch Log Groups
+# --------------------------------------------------------------
+echo "### CloudWatch Log Groups do projeto"
+LOGS=$(aws logs describe-log-groups \
+  --region $REGION \
+  --log-group-name-prefix "/aws/eks/$PROJECT" \
+  --query 'logGroups[*].[logGroupName,storedBytes]' \
+  --output text 2>/dev/null)
+LOGS2=$(aws logs describe-log-groups \
+  --region $REGION \
+  --log-group-name-prefix "/aws/lambda/$PROJECT" \
+  --query 'logGroups[*].[logGroupName,storedBytes]' \
+  --output text 2>/dev/null)
+if [ -z "$LOGS" ] && [ -z "$LOGS2" ]; then
+  echo -e "$OK Nenhum Log Group do projeto"
+else
+  echo -e "$WARN Log Groups (podem gerar custo de armazenamento):"
+  echo "$LOGS $LOGS2" | while read NAME BYTES; do
+    echo -e "   $WARN $NAME | $BYTES bytes"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
+# RESUMO FINAL
+# --------------------------------------------------------------
+echo -e "$SEP"
+echo "  RESUMO — recursos que MAIS geram custo se esquecidos:"
+echo -e "$SEP"
+echo "  1. EKS Cluster        → ~\$0.10/hora só pelo control plane"
+echo "  2. NAT Gateway        → ~\$0.045/hora cada (você tem 2!)"
+echo "  3. EC2 / Node Groups  → depende do tipo (t3.micro = ~\$0.01/hora)"
+echo "  4. RDS                → db.t3.micro = ~\$0.02/hora"
+echo "  5. Load Balancer ALB  → ~\$0.008/hora + dados"
+echo "  6. Elastic IPs soltos → ~\$0.005/hora quando não associados"
+echo -e "$SEP\n"
+
+
+```
+
+---
+### features/metrics.yaml
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    k8s-app: metrics-server
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: system:aggregated-metrics-reader
+rules:
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: system:metrics-server
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes/metrics
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: system:metrics-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:metrics-server
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server
+  namespace: kube-system
+spec:
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  selector:
+    k8s-app: metrics-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: metrics-server
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        k8s-app: metrics-server
+    spec:
+      containers:
+      - args:
+        - --cert-dir=/tmp
+        - --secure-port=10250
+        - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+        - --kubelet-use-node-status-port
+        - --kubelet-insecure-tls
+        - --metric-resolution=15s
+        image: registry.k8s.io/metrics-server/metrics-server:v0.7.2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+          periodSeconds: 10
+        name: metrics-server
+        ports:
+        - containerPort: 10250
+          name: https
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-dir
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-cluster-critical
+      serviceAccountName: metrics-server
+      volumes:
+      - emptyDir: {}
+        name: tmp-dir
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: v1beta1.metrics.k8s.io
+spec:
+  group: metrics.k8s.io
+  groupPriorityMinimum: 100
+  insecureSkipTLSVerify: true
+  service:
+    name: metrics-server
+    namespace: kube-system
+  version: v1beta1
+  versionPriority: 100
+```
+
+---
+### .github/workflows/1_infra_eks.yaml
+```yaml
+# Infra IaC
+name: "1 - Deploy/Destroy da Infra do Cluster EKS"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: eks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
+          aws-region: "us-east-1"
+
+      - name: Read destroy configuration
+        id: read-destroy-config
+        run: |
+          DESTROY="$(jq -r '.boolean' ./iac_eks/destroy_config.json)"
+          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+
+      - name: Terraform Init
+        run: |
+          cd iac_eks && terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      # -------------------------------------------------------
+      # Limpeza de recursos Kubernetes ANTES do destroy
+      # Necessário porque o ALB Controller cria ALBs e ENIs
+      # fora do Terraform — se não forem deletados antes,
+      # a VPC fica bloqueada e o destroy trava por 20+ minutos
+      # -------------------------------------------------------
+      - name: Limpar recursos Kubernetes antes do destroy
+        if: steps.read-destroy-config.outputs.destroy == 'true'
+        run: |
+          aws eks update-kubeconfig \
+            --name ppeks-cluster \
+            --region us-east-1
+
+          echo ">> Deletando Ingress (força remoção dos ALBs pela AWS)..."
+          kubectl delete ingress --all --all-namespaces --ignore-not-found=true || true
+
+          echo ">> Deletando Services do tipo LoadBalancer..."
+          kubectl delete svc --all --all-namespaces \
+            --field-selector spec.type=LoadBalancer \
+            --ignore-not-found=true || true
+
+          echo ">> Aguardando 60s para AWS remover os ALBs e ENIs..."
+          sleep 60
+
+          echo ">> Deletando todos os namespaces do projeto..."
+          kubectl delete namespace appback appfront --ignore-not-found=true || true
+
+          echo ">> Aguardando 30s para finalizar limpeza..."
+          sleep 30
+
+      - name: Terraform Destroy
+        if: steps.read-destroy-config.outputs.destroy == 'true'
+        id: terraform-destroy
+        run: cd iac_eks &&
+          terraform destroy -auto-approve
+
+      - name: Terraform Plan
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-plan
+        run: cd iac_eks &&
+          terraform plan -out="prd.plan"
+
+      - name: Terraform Apply
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-apply
+        run: cd iac_eks &&
+          terraform apply -auto-approve  
+```
+
+---
+### .github/workflows/2_img_back_java.yaml
+```yaml
+# Microsserviço
+name: "2 - Construção da imagem Backend em Java"
+
+on:
+#  push:            # Se execução automática
+#    branches:
+#      - main
+#    paths:
+#      - 'service1_back_java/**'
+  workflow_dispatch: # Habilitando apenas execução manual.
+
+# Configurações da AWS
+permissions:
+  id-token: write
+  deployments: write
+  contents: write
+  statuses: write
+  actions: write
+  checks: read
+        
+jobs:
+    Build:
+      name: Build
+      runs-on: ubuntu-latest # SO
+      
+# Validação manual se Repo AWS (ECR) existe (pode ou não ser criado uma única vez com a Infra)    
+      env:
+          ECR_REGISTRY: "749000351410.dkr.ecr.us-east-1.amazonaws.com" #${{ secrets.URL_AWS }}
+          ECR_REPOSITORY: "back_java" #${{ secrets.REPO_NAME }}
+          
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+
+# Clonar Repo Git no ambiente de execução da pipe.
+        
+        - name: Set IMAGE_TAG with current timestamp
+          id: set_image_tag
+          run: echo "IMAGE_TAG=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+          
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v4 #uses: aws-actions/configure-aws-credentials@v1
+          with:
+            role-to-assume:  "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
+            aws-region: "us-east-1"
+                  
+        - name: Login to Amazon ECR
+          id: login-ecr
+          uses: aws-actions/amazon-ecr-login@v1
+
+# Criação do ECR
+        - name: Create ECR repository if it doesn't exist
+          run: |
+            aws ecr describe-repositories --repository-names $ECR_REPOSITORY || \
+            aws ecr create-repository --repository-name $ECR_REPOSITORY
+
+# Construção da Imagem
+        - name: Push to Amazon ECR
+          run: |
+            docker build -t $ECR_REPOSITORY:${{ env.IMAGE_TAG }} ./service1_back_java
+            docker tag $ECR_REPOSITORY:${{ env.IMAGE_TAG }} $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+
+# Repo que será a base para o Argo
+        - name: Update helm values
+          run: |
+            sed -i "s/\(tag: \)\".*\"/\1\"${{ env.IMAGE_TAG }}\"/" charts/service1_back_java/values.yaml
+            cat charts/service1_back_java/values.yaml
+
+# Comitando e enviando a imagem para o repositório
+        - name: Commit and push changes
+          run: |
+            git config user.email "devops79@yahoo.com"
+            git config user.name "carina-pereira-devops"
+            git add charts/service1_back_java/values.yaml
+            if git diff --staged --quiet; then
+              echo "Nenhuma alteração para commitar"
+            else git commit -m "Atualiza tag image service1_back_java para ${{ env.IMAGE_TAG }} [skip ci]"
+              git push
+            fi
+
+              			  			
+```
+
+---
+### .github/workflows/3_img_front_py.yaml
+```yaml
+# Microsserviço
+name: "3 - Construção da imagem Frontend em Python" 
+
+on:
+#  push:            # Se execução automática
+#    branches:
+#      - main
+#    paths:
+#      - 'service2_front_py/**'
+  workflow_dispatch: # Habilitando apenas execução manual.
+
+# Configurações da AWS
+permissions:
+  id-token: write
+  deployments: write
+  contents: write
+  statuses: write
+  actions: write
+  checks: read
+        
+jobs:
+    Build:
+      name: Build
+      runs-on: ubuntu-latest # SO
+      
+# Validação manual se Repo AWS (ECR) existe (pode ou não ser criado uma única vez com a Infra)    
+      env:
+          ECR_REGISTRY: "749000351410.dkr.ecr.us-east-1.amazonaws.com" #${{ secrets.URL_AWS }}
+          ECR_REPOSITORY: "front_py" #${{ secrets.REPO_NAME }}
+          
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+
+# Clonar Repo Git no ambiente de execução da pipe.
+        
+        - name: Set IMAGE_TAG with current timestamp
+          id: set_image_tag
+          run: echo "IMAGE_TAG=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+          
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v4 #uses: aws-actions/configure-aws-credentials@v1
+          with:
+            role-to-assume:  "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
+            aws-region: "us-east-1"
+                  
+        - name: Login to Amazon ECR
+          id: login-ecr
+          uses: aws-actions/amazon-ecr-login@v1
+
+# Criação do ECR
+        - name: Create ECR repository if it doesn't exist
+          run: |
+            aws ecr describe-repositories --repository-names $ECR_REPOSITORY || \
+            aws ecr create-repository --repository-name $ECR_REPOSITORY
+
+# Construção da Imagem
+        - name: Push to Amazon ECR
+          run: |
+            docker build -t $ECR_REPOSITORY:${{ env.IMAGE_TAG }} ./service2_front_py
+            docker tag $ECR_REPOSITORY:${{ env.IMAGE_TAG }} $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ env.IMAGE_TAG }}
+
+# Repo que será a base para o Argo
+        - name: Update helm values
+          run: |
+            sed -i "s/\(tag: \)\".*\"/\1\"${{ env.IMAGE_TAG }}\"/" charts/service2_front_py/values.yaml
+            cat charts/service2_front_py/values.yaml
+
+# Comitando e enviando a imagem para o repositório
+        - name: Commit and push changes
+          run: |
+            git config user.email "devops79@yahoo.com"
+            git config user.name "carina-pereira-devops"
+            git add charts/service2_front_py/values.yaml
+            if git diff --staged --quiet; then
+              echo "Nenhuma alteração para commitar"
+            else git commit -m "Atualiza tag image service2_front_py para ${{ env.IMAGE_TAG }} [skip ci]"
+              git push
+            fi
+
+              			  			
+```
+
+---
+### .github/workflows/4_infra_rds.yaml
+```yaml
+name: "4 - Deploy/Destroy do RDS PostgreSQL"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: rds
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
+          aws-region: "us-east-1"
+
+      - name: Read destroy configuration
+        id: read-destroy-config
+        run: |
+          DESTROY="$(jq -r '.boolean' ./rds/destroy_config.json)"
+          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+
+      - name: Terraform Init
+        run: |
+          cd rds && terraform init
+
+      - name: Terraform Validate
+        run: cd rds && terraform validate
+
+      - name: Terraform Destroy
+        if: steps.read-destroy-config.outputs.destroy == 'true'
+        id: terraform-destroy
+        run: |
+          cd rds && terraform destroy -auto-approve
+
+      - name: Terraform Plan
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-plan
+        run: |
+          cd rds && terraform plan -out="prd.plan"
+
+      - name: Terraform Apply
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-apply
+        run: |
+          cd rds && terraform apply -auto-approve
+
+```
+
+---
+### .github/workflows/5_infra_lambda.yaml
+```yaml
+name: "5 - Deploy/Destroy da Lambda ppeks"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: lambda
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.3
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
+          aws-region: "us-east-1"
+
+      - name: Read destroy configuration
+        id: read-destroy-config
+        run: |
+          DESTROY="$(jq -r '.boolean' ./iac_lambda/destroy_config.json)"
+          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+
+      - name: Terraform Init
+        run: |
+          cd iac_lambda && terraform init
+
+      - name: Terraform Validate
+        run: cd iac_lambda && terraform validate
+
+      - name: Terraform Destroy
+        if: steps.read-destroy-config.outputs.destroy == 'true'
+        id: terraform-destroy
+        run: |
+          cd iac_lambda && terraform destroy -auto-approve
+
+      - name: Terraform Plan
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-plan
+        run: |
+          cd iac_lambda && terraform plan -out="prd.plan"
+
+      - name: Terraform Apply
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        id: terraform-apply
+        run: |
+          cd iac_lambda && terraform apply -auto-approve
+
+      # Exibe a URL da Lambda ao final (para acessar no browser e concluir atividade AWS)
+      - name: Exibe Lambda Function URL
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          cd iac_lambda && terraform output lambda_function_url
+
+```
+
+---
+### .github/workflows/6_back_java.yaml
+```yaml
+name: "6 - Deploy Backend Java no EKS"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::749000351410:role/github-carina-devops-pipe
+          aws-region: us-east-1
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name ppeks-cluster \
+            --region us-east-1
+
+      - name: Ler outputs do RDS via tfstate S3
+        id: rds
+        run: |
+          RDS_HOST=$(aws s3 cp s3://tfstate-ppeks/rds/terraform.tfstate - | \
+            python3 -c "import sys,json; s=json.load(sys.stdin); print(s['outputs']['rds_endpoint']['value'])")
+          RDS_DB=$(aws s3 cp s3://tfstate-ppeks/rds/terraform.tfstate - | \
+            python3 -c "import sys,json; s=json.load(sys.stdin); print(s['outputs']['rds_db_name']['value'])")
+          echo "rds_host=$RDS_HOST" >> $GITHUB_OUTPUT
+          echo "rds_db=$RDS_DB"     >> $GITHUB_OUTPUT
+
+      - name: Criar namespace se não existir
+        run: |
+          kubectl get namespace appback || kubectl create namespace appback
+
+      - name: Criar/atualizar Secret com credenciais do banco
+        run: |
+          USERNAME=$(aws ssm get-parameter --name "/db/username" --query "Parameter.Value" --output text)
+          PASSWORD=$(aws ssm get-parameter --name "/db/password" --with-decryption --query "Parameter.Value" --output text)
+
+          kubectl create secret generic app-db-credentials \
+            --from-literal=SPRING_DATASOURCE_USERNAME=$USERNAME \
+            --from-literal=SPRING_DATASOURCE_PASSWORD=$PASSWORD \
+            --namespace appback \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy backend com Helm
+        run: |
+          helm upgrade --install java-back ./charts/java-back \
+            --namespace appback \
+            --set env.POSTGRES_HOST=${{ steps.rds.outputs.rds_host }} \
+            --set env.POSTGRES_DB=${{ steps.rds.outputs.rds_db }}
+```
+
+---
+### iac_eks/destroy_config.json
+```json
+{
+    "boolean": false
+}
+```
+
+---
+### iac_eks/main.tf
+```hcl
+# Para inicializar novos módulos necessitamos do terraform init
+module "eks_network" {
+  source       = "./modules/network"
+  cidr_block   = var.cidr_block
+  project_name = var.project_name
+  tags         = var.tags
+}
+
+module "eks_cluster" {
+  source           = "./modules/cluster"
+  project_name     = var.project_name
+  tags             = var.tags
+  public_subnet_1a = module.eks_network.subnet_pub_1a
+  public_subnet_1b = module.eks_network.subnet_pub_1b
+}
+
+module "eks_managed_node_group" {
+  source            = "./modules/managed-node-group"
+  project_name      = var.project_name
+  cluster_name      = module.eks_cluster.cluster_name
+  subnet_private_1a = module.eks_network.subnet_priv_1a
+  subnet_private_1b = module.eks_network.subnet_priv_1b
+  tags              = var.tags
+}
+
+module "eks_aws_load_balancer_controller" {
+  source       = "./modules/alb-controller"
+  project_name = var.project_name
+  tags         = var.tags
+  oidc         = module.eks_cluster.oidc
+  cluster_name = module.eks_cluster.cluster_name
+  vpc_id       = module.eks_network.vpc_id
+}
+```
+
+---
+### iac_eks/modules/alb-controller/data.tf
+```hcl
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+```
+
+---
+### iac_eks/modules/alb-controller/helm_alb.tf
+```hcl
+resource "helm_release" "eks_helm_controller" {
+  name       = "aws-load-balancer-controller"
+  repository = "https://aws.github.io/eks-charts"
+  chart      = "aws-load-balancer-controller"
+  version    = "1.4.7"
+  namespace  = "kube-system"
+
+    values = [yamlencode({
+    clusterName = var.cluster_name
+    serviceAccount = {
+      create = false
+      name   = "aws-load-balancer-controller"
+    }
+    vpcId = var.vpc_id
+  })]
+}
+
+```
+
+---
+### iac_eks/modules/alb-controller/iam_policy.json
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateServiceLinkedRole"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "iam:AWSServiceName": "elasticloadbalancing.amazonaws.com"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeAccountAttributes",
+                "ec2:DescribeAddresses",
+                "ec2:DescribeAvailabilityZones",
+                "ec2:DescribeInternetGateways",
+                "ec2:DescribeVpcs",
+                "ec2:DescribeVpcPeeringConnections",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeInstances",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeTags",
+                "ec2:GetCoipPoolUsage",
+                "ec2:DescribeCoipPools",
+                "elasticloadbalancing:DescribeLoadBalancers",
+                "elasticloadbalancing:DescribeLoadBalancerAttributes",
+                "elasticloadbalancing:DescribeListeners",
+                "elasticloadbalancing:DescribeListenerCertificates",
+                "elasticloadbalancing:DescribeSSLPolicies",
+                "elasticloadbalancing:DescribeRules",
+                "elasticloadbalancing:DescribeTargetGroups",
+                "elasticloadbalancing:DescribeTargetGroupAttributes",
+                "elasticloadbalancing:DescribeTargetHealth",
+                "elasticloadbalancing:DescribeTags"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "cognito-idp:DescribeUserPoolClient",
+                "acm:ListCertificates",
+                "acm:DescribeCertificate",
+                "iam:ListServerCertificates",
+                "iam:GetServerCertificate",
+                "waf-regional:GetWebACL",
+                "waf-regional:GetWebACLForResource",
+                "waf-regional:AssociateWebACL",
+                "waf-regional:DisassociateWebACL",
+                "wafv2:GetWebACL",
+                "wafv2:GetWebACLForResource",
+                "wafv2:AssociateWebACL",
+                "wafv2:DisassociateWebACL",
+                "shield:GetSubscriptionState",
+                "shield:DescribeProtection",
+                "shield:CreateProtection",
+                "shield:DeleteProtection"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:RevokeSecurityGroupIngress"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:CreateSecurityGroup"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:CreateTags"
+            ],
+            "Resource": "arn:aws:ec2:*:*:security-group/*",
+            "Condition": {
+                "StringEquals": {
+                    "ec2:CreateAction": "CreateSecurityGroup"
+                },
+                "Null": {
+                    "aws:RequestTag/elbv2.k8s.aws/cluster": "false"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:CreateTags",
+                "ec2:DeleteTags"
+            ],
+            "Resource": "arn:aws:ec2:*:*:security-group/*",
+            "Condition": {
+                "Null": {
+                    "aws:RequestTag/elbv2.k8s.aws/cluster": "true",
+                    "aws:ResourceTag/elbv2.k8s.aws/cluster": "false"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:RevokeSecurityGroupIngress",
+                "ec2:DeleteSecurityGroup"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "Null": {
+                    "aws:ResourceTag/elbv2.k8s.aws/cluster": "false"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:CreateLoadBalancer",
+                "elasticloadbalancing:CreateTargetGroup"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "Null": {
+                    "aws:RequestTag/elbv2.k8s.aws/cluster": "false"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:CreateListener",
+                "elasticloadbalancing:DeleteListener",
+                "elasticloadbalancing:CreateRule",
+                "elasticloadbalancing:DeleteRule"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:AddTags",
+                "elasticloadbalancing:RemoveTags"
+            ],
+            "Resource": [
+                "arn:aws:elasticloadbalancing:*:*:targetgroup/*/*",
+                "arn:aws:elasticloadbalancing:*:*:loadbalancer/net/*/*",
+                "arn:aws:elasticloadbalancing:*:*:loadbalancer/app/*/*"
+            ],
+            "Condition": {
+                "Null": {
+                    "aws:RequestTag/elbv2.k8s.aws/cluster": "true",
+                    "aws:ResourceTag/elbv2.k8s.aws/cluster": "false"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:AddTags",
+                "elasticloadbalancing:RemoveTags"
+            ],
+            "Resource": [
+                "arn:aws:elasticloadbalancing:*:*:listener/net/*/*/*",
+                "arn:aws:elasticloadbalancing:*:*:listener/app/*/*/*",
+                "arn:aws:elasticloadbalancing:*:*:listener-rule/net/*/*/*",
+                "arn:aws:elasticloadbalancing:*:*:listener-rule/app/*/*/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:ModifyLoadBalancerAttributes",
+                "elasticloadbalancing:SetIpAddressType",
+                "elasticloadbalancing:SetSecurityGroups",
+                "elasticloadbalancing:SetSubnets",
+                "elasticloadbalancing:DeleteLoadBalancer",
+                "elasticloadbalancing:ModifyTargetGroup",
+                "elasticloadbalancing:ModifyTargetGroupAttributes",
+                "elasticloadbalancing:DeleteTargetGroup"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "Null": {
+                    "aws:ResourceTag/elbv2.k8s.aws/cluster": "false"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:RegisterTargets",
+                "elasticloadbalancing:DeregisterTargets"
+            ],
+            "Resource": "arn:aws:elasticloadbalancing:*:*:targetgroup/*/*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:SetWebAcl",
+                "elasticloadbalancing:ModifyListener",
+                "elasticloadbalancing:AddListenerCertificates",
+                "elasticloadbalancing:RemoveListenerCertificates",
+                "elasticloadbalancing:ModifyRule"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+---
+### iac_eks/modules/alb-controller/iam.tf
+```hcl
+resource "aws_iam_role" "eks_controller_role" {
+  name = "${var.project_name}-aws-load-balancer-controller"
+
+  assume_role_policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Federated": "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.eks.${data.aws_region.current.name}.amazonaws.com/id/${local.oidc}"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+                "StringEquals": {
+                    "oidc.eks.${data.aws_region.current.name}.amazonaws.com/id/${local.oidc}:aud": "sts.amazonaws.com",
+                    "oidc.eks.${data.aws_region.current.name}.amazonaws.com/id/${local.oidc}:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller"
+                }
+            }
+        }
+    ]
+}
+EOF
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-aws-load-balancer-controller"
+    }
+  )
+}
+
+resource "aws_iam_role_policy_attachment" "eks_controller_role_attachment" {
+  role       = aws_iam_role.eks_controller_role.name
+  policy_arn = aws_iam_policy.eks_controller_policy.arn
+}
+```
+
+---
+### iac_eks/modules/alb-controller/locals.tf
+```hcl
+locals {
+  oidc = split("/", var.oidc)[4]
+}
+```
+
+---
+### iac_eks/modules/alb-controller/policy.tf
+```hcl
+resource "aws_iam_policy" "eks_controller_policy" {
+  name   = "${var.project_name}-aws-load-balancer-controller"
+  policy = file("${path.module}/iam_policy.json")
+  tags   = var.tags
+}
+```
+
+---
+### iac_eks/modules/alb-controller/sa.tf
+```hcl
+resource "kubernetes_service_account" "eks_controller_sa" {
+  metadata {
+    name      = "aws-load-balancer-controller"
+    namespace = "kube-system"
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.eks_controller_role.arn
+    }
+  }
+}
+```
+
+---
+### iac_eks/modules/alb-controller/variables.tf
+```hcl
+variable "project_name" {
+  type        = string
+  description = "Nome do Projeto"
+}
+
+variable "tags" {
+  type        = map(any)
+  description = "Tags pertencentes aos recursos criados"
+}
+
+variable "oidc" {
+  type        = string
+  description = "Autenticação OIDC do Cluster"
+}
+
+variable "cluster_name" {
+  type        = string
+  description = "Nome do Cluster"
+}
+
+variable "vpc_id" {
+  type        = string
+  description = "Id da VPC"
+}
+```
+
+---
+### iac_eks/modules/cluster/cluster.tf
+```hcl
+resource "aws_eks_cluster" "eks_cluster" {
+  name     = "${var.project_name}-cluster"
+  # Amazon Resource Name
+  role_arn = aws_iam_role.eks_cluster_role.arn
+
+  vpc_config {
+    subnet_ids = [
+      var.public_subnet_1a,
+      var.public_subnet_1b
+    ]
+    # Acesso ao endpoint da API do Kubernetes via rede privada
+    endpoint_private_access = true
+    endpoint_public_access  = true
+  }
+
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP" # ou "API"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
+  # Forçando uma dependência
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_role_attachment
+  ]
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-cluster"
+    }
+  )
+}
+
+
+
+
+
+
+```
+
+---
+### iac_eks/modules/cluster/iam.tf
+```hcl
+# Admin do Cluster
+resource "aws_iam_role" "eks_cluster_role" {
+  name = "${var.project_name}-cluster-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "eks.amazonaws.com"
+        }
+      },
+    ]
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-cluster-role"
+    }
+  )
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_role_attachment" {
+  role       = aws_iam_role.eks_cluster_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks-cluster-service" {
+    policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
+    role = aws_iam_role.eks_cluster_role.name
+}
+
+# User com acesso de visualização dos recursos da Cluster na Console
+
+# Permissões do meu usuário Local:
+resource "aws_eks_access_entry" "devops" {
+  cluster_name  = aws_eks_cluster.eks_cluster.name
+  principal_arn = "arn:aws:iam::749000351410:user/devops"
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "devops_admin" {
+  cluster_name  = aws_eks_cluster.eks_cluster.name
+  principal_arn = "arn:aws:iam::749000351410:user/devops"
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+}
+```
+
+---
+### iac_eks/modules/cluster/oidc.tf
+```hcl
+# Kubernetes utilize contas de serviço do IAM para acessar recursos AWS
+# EC2 / ALB
+data "tls_certificate" "eks_oidc_tls_certificate" {
+  url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
+}
+
+resource "aws_iam_openid_connect_provider" "eks_oidc" {
+  client_id_list = [
+    "sts.amazonaws.com"
+  ]
+  thumbprint_list = data.tls_certificate.eks_oidc_tls_certificate.certificates[*].sha1_fingerprint
+  url             = data.tls_certificate.eks_oidc_tls_certificate.url
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-oidc"
+    }
+  )
+}
+```
+
+---
+### iac_eks/modules/cluster/outputs.tf
+```hcl
+output "cluster_name" {
+  value = aws_eks_cluster.eks_cluster.id
+}
+
+output "oidc" {
+  value = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
+}
+
+output "certificate_authority" {
+  value = aws_eks_cluster.eks_cluster.certificate_authority[0].data
+}
+
+output "endpoint" {
+  value = aws_eks_cluster.eks_cluster.endpoint
+}
+
+
+```
+
+---
+### iac_eks/modules/cluster/sg-rule.tf
+```hcl
+# Nivel de Host
+resource "aws_security_group_rule" "eks_cluster_sg_rule" {
+  type      = "ingress"
+  from_port = 443
+  to_port   = 443
+  protocol  = "tcp"
+  cidr_blocks = [
+    "0.0.0.0/0"
+  ]
+  security_group_id = aws_eks_cluster.eks_cluster.vpc_config[0].cluster_security_group_id
+}
+```
+
+---
+### iac_eks/modules/cluster/variables.tf
+```hcl
+variable "project_name" {
+  type        = string
+  description = "Nome do Projeto"
+}
+
+# Ref locals.tf
+variable "tags" {
+  type        = map(any)
+  description = "Tags pertencentes aos recursos criados"
+}
+
+variable "public_subnet_1a" {
+  type        = string
+  description = "Subnet Pública AZ 1a"
+}
+
+variable "public_subnet_1b" {
+  type        = string
+  description = "Subnet Pública AZ 1b"
+}
+
+variable "az_a" {
+  type        = string
+  description = "AZ da Região"
+  default = "us-east-1a"
+}
+
+variable "az_b" {
+  type        = string
+  description = "AZ da Região"
+  default = "us-east-1b"
+}
+```
+
+---
+### iac_eks/modules/managed-node-group/eks.tf
+```hcl
+resource "aws_eks_node_group" "eks_managed_node_group" {
+  cluster_name    = var.cluster_name
+  node_group_name = "${var.project_name}-nodegroup"
+  node_role_arn   = aws_iam_role.eks_eks_role.arn
+  instance_types  = ["t3.micro"]
+  subnet_ids = [
+    #Subnets privadas
+    var.subnet_private_1a,
+    var.subnet_private_1b
+  ]
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-nodegroup"
+    }
+  )
+
+# Argo consumindo muitos recursos, ajustar quantidade de máquinas? Refatorar código para especificar outra família de instâncias.
+# Obs.: Prometheus Statefulset, vai subir em todos os Nodes, o que pode consumir recursos desnecessários
+  scaling_config {
+
+    desired_size = 3
+    max_size     = 4
+    min_size     = 2
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_eks_role_attachment_worker,
+    aws_iam_role_policy_attachment.eks_eks_role_attachment_ecr,
+    aws_iam_role_policy_attachment.eks_eks_role_attachment_cni
+  ]
+}
+```
+
+---
+### iac_eks/modules/managed-node-group/iam.tf
+```hcl
+resource "aws_iam_role" "eks_eks_role" {
+  name = "${var.project_name}-eks-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-eks-role"
+    }
+  )
+}
+
+resource "aws_iam_role_policy_attachment" "eks_eks_role_attachment_worker" {
+  role       = aws_iam_role.eks_eks_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_eks_role_attachment_ecr" {
+  role       = aws_iam_role.eks_eks_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_eks_role_attachment_cni" {
+  role       = aws_iam_role.eks_eks_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+```
+
+---
+### iac_eks/modules/managed-node-group/variables.tf
+```hcl
+# Todas as variáveis vindas do modulo principal
+variable "project_name" {
+  type        = string
+  description = "Nome do Projeto"
+}
+
+variable "tags" {
+  type        = map(any)
+  description = "Tags pertencentes aos recursos criados"
+}
+
+variable "cluster_name" {
+  type        = string
+  description = "Nome do Cluster"
+}
+
+variable "subnet_private_1a" {
+  type        = string
+  description = "Subnet Privada AZ 1a"
+}
+
+variable "subnet_private_1b" {
+  type        = string
+  description = "Subnet Pública AZ 1b"
+}
+```
+
+---
+### iac_eks/modules/network/igw.tf
+```hcl
+# Saida para internet
+resource "aws_internet_gateway" "eks_igw" {
+  vpc_id = aws_vpc.eks_vpc.id
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-igw"
+    }
+  )
+}
+
+# Rota para InternetGw
+resource "aws_route_table" "eks_public_route_table" {
+  vpc_id = aws_vpc.eks_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.eks_igw.id
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-pub-route-table"
+    }
+  )
+}
+```
+
+---
+### iac_eks/modules/network/ngw.tf
+```hcl
+# Recursos da Rede Privada com acesso a internet, sem expor o ip privado do mesmo
+# EIP (IP público) que mascara o Ip privado da instância de origem
+resource "aws_eip" "eks_ngw_eip_1a" {
+  #vpc  = true
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-eip-1a"
+    }
+  )
+}
+
+resource "aws_eip" "eks_ngw_eip_1b" {
+  #vpc  = true
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-eip-1b"
+    }
+  )
+}
+
+resource "aws_nat_gateway" "eks_ngw_1a" {
+  allocation_id = aws_eip.eks_ngw_eip_1a.id
+  subnet_id     = aws_subnet.eks_subnet_public_1a.id
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-ngw-1a"
+    }
+  )
+}
+
+resource "aws_nat_gateway" "eks_ngw_1b" {
+  allocation_id = aws_eip.eks_ngw_eip_1b.id
+  subnet_id     = aws_subnet.eks_subnet_public_1b.id
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-ngw-1b"
+    }
+  )
+}
+
+# Rotas para um NatGW
+resource "aws_route_table" "eks_private_route_table_1a" {
+  vpc_id = aws_vpc.eks_vpc.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.eks_ngw_1a.id
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-priv-route-table-1a"
+    }
+  )
+}
+
+resource "aws_route_table" "eks_private_route_table_1b" {
+  vpc_id = aws_vpc.eks_vpc.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.eks_ngw_1b.id
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-priv-route-table-1b"
+    }
+  )
+}
+```
+
+---
+### iac_eks/modules/network/output.tf
+```hcl
+# Informações que eu preciso exportar deste módulo para que outros módulos reutilizem
+output "subnet_pub_1a" {
+  value = aws_subnet.eks_subnet_public_1a.id
+}
+
+output "subnet_pub_1b" {
+  value = aws_subnet.eks_subnet_public_1b.id
+}
+
+output "subnet_priv_1a" {
+  value = aws_subnet.eks_subnet_private_1a.id
+}
+
+output "subnet_priv_1b" {
+  value = aws_subnet.eks_subnet_private_1b.id
+}
+
+output "vpc_id" {
+  value = aws_vpc.eks_vpc.id
+}
+
+output "project_name" {
+  value = "ppeks"
+}
+```
+
+---
+### iac_eks/modules/network/private.tf
+```hcl
+resource "aws_subnet" "eks_subnet_private_1a" {
+  vpc_id            = aws_vpc.eks_vpc.id
+  cidr_block        = cidrsubnet(var.cidr_block, 8, 3)
+  availability_zone = "${data.aws_region.ppeks.name}a"
+
+  tags = merge(
+    var.tags,
+    {
+      Name                              = "${var.project_name}-priv-subnet-1a",
+      "kubernetes.io/role/internal-elb" = 1
+    }
+  )
+}
+
+resource "aws_subnet" "eks_subnet_private_1b" {
+  vpc_id            = aws_vpc.eks_vpc.id
+  cidr_block        = cidrsubnet(var.cidr_block, 8, 4)
+  availability_zone = "${data.aws_region.ppeks.name}b"
+
+  tags = merge(
+    var.tags,
+    {
+      Name                              = "${var.project_name}-priv-subnet-1b",
+      "kubernetes.io/role/internal-elb" = 1
+    }
+  )
+}
+
+resource "aws_route_table_association" "eks_rtb_assoc_priv_1a" {
+  subnet_id      = aws_subnet.eks_subnet_private_1a.id
+  route_table_id = aws_route_table.eks_private_route_table_1a.id
+}
+
+resource "aws_route_table_association" "eks_rtb_assoc_priv_1b" {
+  subnet_id      = aws_subnet.eks_subnet_private_1b.id
+  route_table_id = aws_route_table.eks_private_route_table_1b.id
+}
+```
+
+---
+### iac_eks/modules/network/public.tf
+```hcl
+resource "aws_subnet" "eks_subnet_public_1a" {
+  vpc_id                  = aws_vpc.eks_vpc.id
+  # Função do Terraform para criação de subnets
+  cidr_block              = cidrsubnet(var.cidr_block, 8, 1)
+  availability_zone       = "${data.aws_region.ppeks.name}a"
+  # Atribuição de Ip Publico
+  map_public_ip_on_launch = true
+
+  tags = merge(
+    var.tags,
+    {
+      # Label fundamental na subida do ALB  
+      Name                     = "${var.project_name}-pub-subnet-1a",
+      "kubernetes.io/role/elb" = 1
+    }
+  )
+}
+
+resource "aws_subnet" "eks_subnet_public_1b" {
+  vpc_id                  = aws_vpc.eks_vpc.id
+  cidr_block              = cidrsubnet(var.cidr_block, 8, 2)
+  availability_zone       = "${data.aws_region.ppeks.name}b"
+  map_public_ip_on_launch = true
+
+  tags = merge(
+    var.tags,
+    {
+      Name                     = "${var.project_name}-pub-subnet-1b",
+      "kubernetes.io/role/elb" = 1
+    }
+  )
+}
+
+resource "aws_route_table_association" "eks_rtb_assoc_1a" {
+  subnet_id      = aws_subnet.eks_subnet_public_1a.id
+  route_table_id = aws_route_table.eks_public_route_table.id
+}
+
+resource "aws_route_table_association" "eks_rtb_assoc_1b" {
+  subnet_id      = aws_subnet.eks_subnet_public_1b.id
+  route_table_id = aws_route_table.eks_public_route_table.id
+}
+```
+
+---
+### iac_eks/modules/network/region.tf
+```hcl
+# Datasources quando desejamos recuperar uma informação
+data "aws_region" "ppeks" {}
+```
+
+---
+### iac_eks/modules/network/variables.tf
+```hcl
+# Variáveis vindas do Modulo Principal
+# Terraform sempre lê no diretório atual as variáveis
+variable "cidr_block" {
+  type        = string
+  # Sempre utilizar uma descrição para quando for documentar o projeto
+  description = "Range de IPs utilizado na VPC"
+}
+
+variable "project_name" {
+  type        = string
+  description = "Nome do Projeto"
+}
+
+# Ref locals.tf
+variable "tags" {
+  type        = map(any)
+  description = "Tags pertencentes aos recursos criados"
+}
+```
+
+---
+### iac_eks/modules/network/vpc.tf
+```hcl
+resource "aws_vpc" "eks_vpc" {
+  cidr_block           = var.cidr_block
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+  # Função para adição de tags especificadas para Todos os recursos com as Tags específicas para cada recurso
+  tags = merge(
+    # Variáveis de identificação do Projeto na VPC (Todos os recursos)
+    var.tags,
+    {
+      # Variavel específica do recurso, como Nome 
+      Name = "${var.project_name}-vpc"
+    }
+  )
+}
+```
+
+---
+### iac_eks/outputs.tf
+```hcl
+output "vpc_id" {
+  value = module.eks_network.vpc_id
+}
+
+output "subnet_priv_1a" {
+  value = module.eks_network.subnet_priv_1a
+}
+
+output "subnet_priv_1b" {
+  value = module.eks_network.subnet_priv_1b
+}
+```
+
+---
+### iac_eks/providers.tf
+```hcl
+# Versão atual dos Providers validadas!
+terraform {
+  required_providers {
+    aws = {
+        source = "hashicorp/aws"
+        version = ">= 5.44.0"
+    }
+
+	kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "2.17.0"
+    }
+  }
+  
+  backend "s3" {
+    bucket = "tfstate-ppeks"
+    key    = "eks/terraform.tfstate"
+    region = "us-east-1"    
+  }
+}
+
+provider "aws" {
+  region = var.region
+}
+
+provider "kubernetes" {
+  host                   = module.eks_cluster.endpoint
+  cluster_ca_certificate = base64decode(module.eks_cluster.certificate_authority)
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    args        = ["eks", "get-token", "--cluster-name", module.eks_cluster.cluster_name]
+    command     = "aws"
+  }
+}
+
+provider "helm" {
+  kubernetes = {
+    host                   = module.eks_cluster.endpoint
+    cluster_ca_certificate = base64decode(module.eks_cluster.certificate_authority)
+    exec = {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      args        = ["eks", "get-token", "--cluster-name", module.eks_cluster.cluster_name]
+      command     = "aws"
+    }
+  }
+}
+```
+
+---
+### iac_eks/variables.tf
+```hcl
+# Definição e inicialização das variáveis do módulo principal, quando CiCd no github
+variable "cidr_block" {
+  type        = string
+  description = "Range de IPs utilizado na VPC"
+  default = "10.0.0.0/16"
+}
+
+variable "project_name" {
+  type        = string
+  description = "Nome do Projeto"
+  default = "ppeks"
+}
+
+variable "region" {
+  type        = string
+  description = "Região da AWS"
+  default = "us-east-1"
+}
+
+variable "tags" {
+  # Variável com conjunto de pares chave-valor 
+  type        = map(any)
+  description = "Tags pertencentes aos recursos criados"
+      default = {
+    "Time": "SRE"
+}
+}
+```
+
+---
+### iac_lambda/data.tf
+```hcl
+# iac_lambda/data.tf
+data "terraform_remote_state" "rds" {
+  backend = "s3"
+  config = {
+    bucket = "tfstate-ppeks"
+    key    = "rds/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+```
+
+---
+### iac_lambda/destroy_config.json
+```json
+{
+  "boolean": true
+}
+
+```
+
+---
+### iac_lambda/lambda_function.py
+```python
+import boto3
+import os
+import json
+
+def lambda_handler(event, context):
+    """
+    ppeks Health Check Lambda
+    - Lê credenciais do SSM Parameter Store
+    - Retorna status dos recursos do projeto
+    - Exposição via Function URL (aplicação web)
+    """
+    ssm = boto3.client('ssm', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
+    results = {}
+
+    # Lê username do banco (SSM já usado no projeto)
+    try:
+        param = ssm.get_parameter(
+            Name=os.environ['SSM_PATH_DB_USERNAME'],
+            WithDecryption=False
+        )
+        results['db_user_found'] = True
+        results['db_user']       = param['Parameter']['Value']
+    except Exception as e:
+        results['db_user_found'] = False
+        results['db_user_error'] = str(e)
+
+    # Lê endpoint do RDS
+    results['db_host']    = os.environ.get('DB_HOST', 'not-configured')
+    results['project']    = os.environ.get('PROJECT_NAME', 'ppeks')
+    results['status']     = 'ok'
+    results['message']    = 'ppeks Lambda health check executado com sucesso'
+
+    print(json.dumps(results))
+
+    # Retorno compatível com Function URL (HTTP response)
+    return {
+        "statusCode": 200,
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": json.dumps(results, indent=2)
+    }
+
+```
+
+---
+### iac_lambda/main.tf
+```hcl
+# ==============================================================
+# IAM Role para a Lambda
+# ==============================================================
+
+resource "aws_iam_role" "lambda_role" {
+  name = "${var.project_name}-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+# Permissão básica: CloudWatch Logs
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# Permissão de leitura no SSM (já usado no projeto)
+resource "aws_iam_role_policy_attachment" "lambda_ssm" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess"
+}
+
+# ==============================================================
+# Empacotamento do código Python → ZIP
+# ==============================================================
+
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_file = "${path.module}/lambda_function.py"
+  output_path = "${path.module}/lambda_function.zip"
+}
+
+# ==============================================================
+# Função Lambda
+# ==============================================================
+
+resource "aws_lambda_function" "ppeks_health" {
+  function_name    = "${var.project_name}-health-check"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "lambda_function.lambda_handler"
+  runtime          = "python3.12"
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  timeout          = 10
+
+  environment {
+    variables = {
+      PROJECT_NAME         = var.project_name
+      SSM_PATH_DB_USERNAME = var.ssm_path_db_username
+      SSM_PATH_DB_PASSWORD = var.ssm_path_db_password
+      DB_HOST              = data.terraform_remote_state.rds.outputs.rds_endpoint
+    }
+  }
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+# ==============================================================
+# Function URL — expõe como aplicação web (sem API Gateway)
+# Necessário para concluir atividade AWS: "aplicação web com Lambda"
+# ==============================================================
+
+resource "aws_lambda_function_url" "ppeks_health_url" {
+  function_name      = aws_lambda_function.ppeks_health.function_name
+  authorization_type = "NONE"
+
+  cors {
+    allow_origins = ["*"]
+    allow_methods = ["GET"]
+    max_age       = 300
+  }
+}
+
+# ==============================================================
+# EventBridge — executa a cada 5 minutos (mantém Lambda quente)
+# ==============================================================
+
+resource "aws_cloudwatch_event_rule" "every_5min" {
+  name                = "${var.project_name}-health-schedule"
+  description         = "Executa o health check Lambda a cada 5 minutos"
+  schedule_expression = "rate(5 minutes)"
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_event_target" "trigger_lambda" {
+  rule = aws_cloudwatch_event_rule.every_5min.name
+  arn  = aws_lambda_function.ppeks_health.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.ppeks_health.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.every_5min.arn
+}
+
+```
+
+---
+### iac_lambda/outputs.tf
+```hcl
+output "lambda_function_name" {
+  description = "Nome da função Lambda"
+  value       = aws_lambda_function.ppeks_health.function_name
+}
+
+output "lambda_function_url" {
+  description = "URL HTTP da função Lambda (aplicação web)"
+  value       = aws_lambda_function_url.ppeks_health_url.function_url
+}
+
+output "lambda_arn" {
+  description = "ARN da função Lambda"
+  value       = aws_lambda_function.ppeks_health.arn
+}
+
+```
+
+---
+### iac_lambda/providers.tf
+```hcl
+terraform {
+  required_version = ">= 1.8.3"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
+  }
+
+  backend "s3" {
+    bucket = "tfstate-ppeks"
+    key    = "lambda/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+```
+
+---
+### iac_lambda/variables.tf
+```hcl
+variable "aws_region" {
+  description = "Região AWS"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "project_name" {
+  description = "Nome do projeto"
+  type        = string
+  default     = "ppeks"
+}
+
+variable "ssm_path_db_username" {
+  description = "Caminho SSM do username do banco"
+  type        = string
+  default     = "/db/username"
+}
+
+variable "ssm_path_db_password" {
+  description = "Caminho SSM do password do banco"
+  type        = string
+  default     = "/db/password"
+}
+
+```
+
+---
+### rds/data.tf
+```hcl
+# recuperando o state do EKS para pegar o VPC e subnets
+data "terraform_remote_state" "eks" {
+  backend = "s3"
+  config = {
+    bucket = "tfstate-ppeks"
+    key    = "eks/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+```
+
+---
+### rds/destroy_config.json
+```json
+{
+    "boolean": true
+}
+```
+
+---
+### rds/outputs.tf
+```hcl
+output "rds_endpoint" {
+  description = "Endpoint do RDS Postgres"
+  value       = aws_db_instance.postgres.address
+}
+
+output "rds_db_name" {
+  description = "Nome do banco no RDS"
+  value       = aws_db_instance.postgres.db_name
+}
+
+```
+
+---
+### rds/providers.tf
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+    backend "s3" {
+    bucket = "tfstate-ppeks"
+    key    = "rds/terraform.tfstate"
+    region = "us-east-1"    
+  }
+}
+
+provider "aws" {
+  region = var.region
+}
+
+```
+
+---
+### rds/rds.tf
+```hcl
+data "aws_ssm_parameter" "db_username" {
+  name = aws_ssm_parameter.db_username.name
+}
+
+data "aws_ssm_parameter" "db_password" {
+  name            = aws_ssm_parameter.db_password.name
+  with_decryption = true
+}
+
+resource "aws_db_instance" "postgres" {
+  identifier             = "${var.project_name}-postgres"
+  engine                 = "postgres"
+  instance_class         = "db.t3.micro"  # free tier elegível
+  allocated_storage      = 20
+
+  db_name                = "mydb"
+  username               = data.aws_ssm_parameter.db_username.value
+  password               = data.aws_ssm_parameter.db_password.value
+
+  db_subnet_group_name   = aws_db_subnet_group.this.name
+  vpc_security_group_ids = [aws_security_group.rds.id]
+
+  publicly_accessible = false
+  multi_az            = false
+  storage_encrypted   = false
+  deletion_protection = false
+  skip_final_snapshot = true
+}
+
+```
+
+---
+### rds/security-group.tf
+```hcl
+# rds/security-group.tf
+resource "aws_security_group" "rds" {
+  name        = "${var.project_name}-rds-sg"
+  description = "Allow Postgres from VPC"
+  vpc_id      = data.terraform_remote_state.eks.outputs.vpc_id  # ← antes: var.vpc_id
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/8"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+```
+
+---
+### rds/ssm-parameters.tf
+```hcl
+resource "aws_ssm_parameter" "db_username" {
+  name        = "/db/username"
+  description = "User da aplicação para o RDS"
+  type        = "String"
+  value       = "matthias"
+}
+
+resource "aws_ssm_parameter" "db_password" {
+  name        = "/db/password"
+  description = "Senha da aplicação para o RDS"
+  type        = "SecureString"
+  value       = "password"  # ou um valor inicial
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+```
+
+---
+### rds/subnet-group.tf
+```hcl
+# rds/subnet-group.tf
+resource "aws_db_subnet_group" "this" {
+  name = "${var.project_name}-rds-subnet-group"
+  subnet_ids = [                                                        # ← antes: var.private_subnets
+    data.terraform_remote_state.eks.outputs.subnet_priv_1a,
+    data.terraform_remote_state.eks.outputs.subnet_priv_1b,
+  ]
+  tags = {
+    Name = "${var.project_name}-rds-subnet-group"
+  }
+}
+```
+
+---
+### rds/variables.tf
+```hcl
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "project_name" {
+  type        = string
+  description = "Nome do Projeto"
+  default = "ppeks"
+}
+```
+
+---
+### Readme.md
+```markdown
+![OPS](prints/image1.png)
+
+# Documentação está em construção, e as informações ainda não estão na ordem correta, nem com as devidas evidências!
+
+---
+
+# Uso recomendado de Inteligência Artificial
+
+A IA não substitui treinamentos e conhecimentos prévios acadêmicos das tecnologias envolvidas neste laboratório, apenas auxilia com dúvidas pontuais, ou sugere melhorias.
+
+Seja na edição de prompts, ou nas respostas da IA, ter este conhecimento prévio, acelera o resultado esperado.
+
+No uso de IA se faz imprescindível um desenho prévio de toda a arquitetura, bem como as etapas, pois a falta deste planejamento, gera prompts desnecessários, com saídas desnecessárias, poluindo todo o histórico de mensagens, resultando em perca de tempo nas buscas pos informações úteis.
+
+Uma documentação bem feita (a exemplo do Projeto_Anterior.md, disponível no diretório raiz deste repositório), também traz insumos para análise de IA, o que foi disruptivo para a evolução do projeto. Por padrão IAs fazem a leitura de Readme, então tenha sempre em mente a importância de boas documentações.
+
+---
+
+# Premissas
+
+Criar um bucket S3 na AWS, com nome "tfstate-ppeks" antes de executar as pipelines do Github Actions. Caso deseje um bucket S3 com outro nome, necessário alterar nas configurações.
+
+Alimentar valores manualmente após a criação do EKS:
+
+```
+vpc_id         = "vpc-0e424344843d73a95"
+private_subnets = [
+  "subnet-015a1736387966dfb",
+  "subnet-0da9e8b2ee04052eb"
+]
+project_name   = "ppeks"
+```
+
+---
+
+# Acesso a AWS
+
+Certifique-se que o usuário que acessa a console (1), seja o mesmo usuário com acesso via awscli (2), e o mesmo usuário ao qual serão concedidas as permissões de visualização (3):
+
+![USER](prints/image3.png)
+
+1 - Lembrando que ao logar com o usuário root da conta, o que geralmente é o comum, não será possível visualizar, Pods, Services, etc... (isso pode causar confusão).
+
+2 - Acesso via awscli, será com esse mesmo usuário que executaremos os comandos via Kubectl:
+```
+[carina@fedora pp_eks]$ aws sts get-caller-identity
+{
+...
+"Arn": "arn:aws:iam::749000351410:user/devops"
+}
+
+```
+
+3 - Permissões atribuídas via IAM (código Terraform), ao mesmo usuário:
+
+![IAM](prints/image4.png)
+
+---
+
+# Laboratório OTEL
+
+Este laboratório evoluiu de acordo com uma experiência anterior, descrita no arquivo Projeto_Anterior.md.
+
+A proposta atual é adaptar para a Cloud AWS o laboratório do treinamento:
+
+https://github.com/lftraining/LFS148-code
+
+Como no print abaixo, os containers (Docker na estrutura do curso), serão orquestrados em um EKS na AWS, sendo a infra construida com o GitHub Actions/Terraform, o deploy das aplicações gerenciados via Helm, sendo o Github a única fonte de verdade para o ArgoCD.
+
+![OTEL](prints/image.png)
+
+Obs.: Como já temos um front em Python, não utilizaremos o microsserviço Todoui-thymeleaf.
+
+OpentelemetryDemo:
+
+https://opentelemetry.io/ecosystem/demo/
+
+A construção será feita de forma didática e intuitiva, bem detalhada através desta documentação.
+
+# Topologia da AWS
+
+No laboratório anterior, foi sugerido o uso do Traefik, no qual este deploy do Kubernetes faria a gerencia das rotas (conceitos de CKA). Como queremos explorar mais os recursos da AWS (atualmente estudando para AWS Certified Solutions Architect Associate), para este Laboratório vamos utilizar o AWS ALB Ingress Controller, expondo aplicações.
+
+De fato o deploy é feito pelo Helm, que é um gerenciador de pacotes do Kubernetes, mas ele fará a criação e gerencia do ALB, que por sua vez é um recurso da AWS. Aliás, qualquer serviço exposto em um EKS, sem "annotations" específicos, pode criar um ELB (geralmente é criado um "Clássico", com poucos recursos), mas a diferença é que para os próximos deployments, vamos usar os "annotations", para que estes utilizem o ALB previamente criado, e não crie outro ALB.
+
+Também no laboratório anterior, no destroy da infra, a pipeline quebrava por conta que o ALB estava com aplicações criadas no EKS, o que não permitia a destruição do cluster. Então com a instalação/desinstalação do ALB Ingress Controller via pipeline do GitHub Actions, a infra fica totalmente apartada do deploy permitindo flexibilidade.
+
+Também temos granularidade em qualquer alteração da pasta "iac_eks" podendo ser executada através de uma pipeline específica para a infra.
+
+# Cluster EKS
+
+Validação e configurações iniciais:
+
+```
+aws eks update-kubeconfig --region us-east-1 --name ppeks-cluster
+Updated context arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster in /home/carina/.kube/config
+
+kubectl config use-context  arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster
+Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
+```
+
+# Features
+
+Instalação manual via kubectl, do deploy de métricas, para coleta de informações de CPU e Memória de Nodes e Pods:
+
+```
+[carina@fedora pp_eks]$ k apply -f ./features/metrics.yaml
+serviceaccount/metrics-server created
+clusterrole.rbac.authorization.k8s.io/system:aggregated-metrics-reader created
+clusterrole.rbac.authorization.k8s.io/system:metrics-server created
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
+service/metrics-server created
+deployment.apps/metrics-server created
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+``` 
+
+Obs.: Em um primeiro deploy com apenas dois nodes no cluster, não haviam CPU e Memória suficientes para a implementação do recurso (considerando com o deploy do ALB Controller):
+
+```
+[carina@fedora pp_eks]$ k -n kube-system get deploy
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+aws-load-balancer-controller   2/2     2            2           22m
+coredns                        2/2     2            2           24m
+metrics-server                 0/1     1            0           10m
+
+[carina@fedora pp_eks]$ k -n kube-system describe po metrics-server-df8589546-gr5gp
+...
+Events:
+  Type     Reason            Age    From               Message
+  ----     ------            ----   ----               -------
+  Warning  FailedScheduling  3m34s  default-scheduler  0/2 nodes are available: 2 Too many pods. no new claims to deallocate, preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.
+```
+
+Após a adição de mais um node:
+
+```
+[carina@fedora pp_eks]$ k get no
+NAME                         STATUS   ROLES    AGE   VERSION
+ip-10-0-3-155.ec2.internal   Ready    <none>   21m   v1.34.2-eks-ecaa3a6
+ip-10-0-4-171.ec2.internal   Ready    <none>   36s   v1.34.2-eks-ecaa3a6
+ip-10-0-4-213.ec2.internal   Ready    <none>   21m   v1.34.2-eks-ecaa3a6
+
+[carina@fedora pp_eks]$ k -n kube-system get deploy
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+aws-load-balancer-controller   2/2     2            2           26m
+coredns                        2/2     2            2           28m
+metrics-server                 1/1     1            1           14m
+
+[carina@fedora pp_eks]$ k get po -A
+NAMESPACE     NAME                                            READY   STATUS    RESTARTS   AGE
+kube-system   aws-load-balancer-controller-68bc9587b7-2zbn4   1/1     Running   0          23m
+kube-system   aws-load-balancer-controller-68bc9587b7-tsxnd   1/1     Running   0          23m
+kube-system   aws-node-2w92l                                  2/2     Running   0          22m
+kube-system   aws-node-8dxv2                                  2/2     Running   0          83s
+kube-system   aws-node-dlkdq                                  2/2     Running   0          22m
+kube-system   coredns-7d58d485c9-29ds5                        1/1     Running   0          25m
+kube-system   coredns-7d58d485c9-rqn5l                        1/1     Running   0          25m
+kube-system   kube-proxy-7qkdd                                1/1     Running   0          22m
+kube-system   kube-proxy-c56sg                                1/1     Running   0          83s
+kube-system   kube-proxy-hhhgw                                1/1     Running   0          22m
+kube-system   metrics-server-df8589546-gr5gp                  1/1     Running   0          11m
+```
+
+Enfim, Métricas de Nodes e Pods:
+
+```
+[carina@fedora pp_eks]$ k top no
+NAME                         CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+ip-10-0-3-155.ec2.internal   31m          1%       379Mi           73%         
+ip-10-0-4-171.ec2.internal   42m          2%       315Mi           61%         
+ip-10-0-4-213.ec2.internal   33m          1%       375Mi           73%    
+
+[carina@fedora pp_eks]$ k top po -A
+NAMESPACE     NAME                                            CPU(cores)   MEMORY(bytes)   
+kube-system   aws-load-balancer-controller-68bc9587b7-2zbn4   1m           20Mi            
+kube-system   aws-load-balancer-controller-68bc9587b7-tsxnd   2m           20Mi            
+kube-system   aws-node-2w92l                                  2m           43Mi            
+kube-system   aws-node-8dxv2                                  3m           42Mi            
+kube-system   aws-node-dlkdq                                  3m           43Mi            
+kube-system   coredns-7d58d485c9-29ds5                        2m           11Mi            
+kube-system   coredns-7d58d485c9-rqn5l                        2m           13Mi            
+kube-system   kube-proxy-7qkdd                                1m           18Mi            
+kube-system   kube-proxy-c56sg                                1m           18Mi            
+kube-system   kube-proxy-hhhgw                                1m           19Mi            
+kube-system   metrics-server-df8589546-gr5gp                  3m           18Mi           
+
+```
+---
+
+# Banco de Dados
+
+Endpoint para conexão via DBeaver.
+
+---
+
+# Erros mapeados durante a construção do cluster
+
+1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acesso ao cluster.
+
+![ERRO](prints/image2.png)
+
+Solução:
+
+Como o ALB, embora seja uma implementação via Helm, faz a gerência de LBs (infra da AWS) a medida que acontece o "expose" dos deployments, a implementação do Controller que antes era feita via pipe no GitHub Actions, passou a ser feita via modulo no Terraform:
+
+```
+[carina@fedora pp_eks]$ tree ./iac_eks/modules/alb-controller/
+./iac_eks/modules/alb-controller/
+├── data.tf
+├── helm_alb.tf
+├── iam_policy.json
+├── iam.tf
+├── locals.tf
+├── policy.tf
+├── sa.tf
+└── variables.tf
+
+1 directory, 8 files
+```
+
+2 - IA não revisou "com assertividade" o meu código de criação do RDS, de modo que não tinha TFstate armazenado na AWS, deixando de fazer a gerência de criação/destruição dos recursos, como solicitado:
+
+![TFSTATE](prints/image5.png)
+
+Solução:
+
+"Feeling" ao perceber erros de recursos que já estavam criados. TFSTATE devidamente configurado:
+
+```
+    backend "s3" {
+    bucket = "arquivo-de-estado-tf1"
+    key    = "rds/terraform.tfstate"
+    region = "us-east-1"    
+  }
+```
+
+---
+
+Deleção manual de recursos (despesas extras):
+
+3 - Deletar Snashot RDS 
+2 - Deletar Imagens e ECRs
+3 - Deletar tfstate e RDS
+
+---
+
+# Supérfluos
+
+1 - Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
+
+A função Lambda `ppeks-health-check` é uma aplicação web serverless que atua como **ponto central de verificação de saúde** dos recursos da infraestrutura do projeto `ppeks`. Ela é exposta publicamente via **Function URL** — ou seja, gera um endpoint HTTP diretamente, sem necessidade de API Gateway.
+
+Quando acessada (via browser, `curl`, ou pelo EventBridge), a função executa três verificações em sequência e retorna um JSON com o resultado.
+
+1.1 - Verifica as credenciais no SSM Parameter Store
+
+```python
+param = ssm.get_parameter(
+    Name=os.environ['SSM_PATH_DB_USERNAME'],
+    WithDecryption=False
+)
+```
+
+Lê o parâmetro `/db/username` do **AWS Systems Manager Parameter Store** — o mesmo repositório de credenciais usado pelo backend Java e pelo workflow de deploy. Confirma que:
+
+- A IAM Role da Lambda tem permissão de leitura no SSM
+
+- O parâmetro existe e está acessível
+
+1.2 - Lê o endpoint do RDS via variável de ambiente
+
+```python
+results['db_host'] = os.environ.get('DB_HOST', 'not-configured')
+```
+
+O `DB_HOST` é injetado pelo Terraform no momento do `apply`, lendo o endpoint diretamente do tfstate do RDS via `terraform_remote_state`. Isso garante que a Lambda sempre aponta para o banco correto, sem valores hardcoded.
+
+1.3 - Retorna o status como resposta HTTP
+
+```json
+{
+  "db_user_found": true,
+  "db_user": "matthias",
+  "db_host": "ppeks-postgres.xxxxxx.us-east-1.rds.amazonaws.com",
+  "project": "ppeks",
+  "status": "ok",
+  "message": "ppeks Lambda health check executado com sucesso"
+}
+```
+
+A resposta segue o formato esperado pela **Function URL** (`statusCode`, `headers`, `body`), tornando-a compatível com qualquer browser ou cliente HTTP.
+
+1.4 - Infraestrutura associada
+
+IAM Role
+
+A Lambda executa com uma IAM Role dedicada (`ppeks-lambda-role`) com apenas duas permissões:
+- `AWSLambdaBasicExecutionRole` — escrita de logs no CloudWatch
+- `AmazonSSMReadOnlyAccess` — leitura de parâmetros no SSM
+
+Nenhuma permissão de escrita, nenhum acesso ao banco diretamente — **princípio do menor privilégio**.
+
+1.5 - Function URL
+
+```
+https://<id>.lambda-url.us-east-1.on.aws/
+```
+
+Endpoint HTTP público gerado automaticamente pela AWS. Não requer API Gateway. Método permitido: `GET`.
+
+1.6 - EventBridge (agendamento)
+
+Um gatilho automático executa a Lambda **a cada 5 minutos** via `rate(5 minutes)`. Isso serve para:
+
+- Manter a Lambda "aquecida" (reduz cold start)
+
+- Gerar logs periódicos no CloudWatch
+
+- Funcionar como um monitor contínuo da infraestrutura
+
+1.7 - Fluxo completo
+
+```
+Browser / curl
+      │
+      ▼
+Function URL (HTTPS)
+      │
+      ▼
+Lambda ppeks-health-check
+      │
+      ├──► SSM Parameter Store  →  /db/username
+      │
+      ├──► Variável DB_HOST     →  endpoint do RDS (via Terraform remote_state)
+      │
+      └──► Retorna JSON com status
+```
+
+```
+EventBridge (rate 5min)
+      │
+      ▼
+Lambda ppeks-health-check  →  CloudWatch Logs
+```
+
+1.8 - Como acessar
+
+Após o `terraform apply` do `iac_lambda`, o output exibe a URL:
+
+```bash
+terraform output lambda_function_url
+# https://<id>.lambda-url.us-east-1.on.aws/
+```
+
+1.9 - Acesse no browser ou via terminal:
+
+```bash
+curl https://<id>.lambda-url.us-east-1.on.aws/
+```
+
+1.10 - Relação com o restante do projeto
+
+| Recurso                    | Como a Lambda usa                                        |
+|                            |                                                          |
+| **SSM Parameter Store**    | Lê `/db/username` para validar credenciais               |
+| **RDS PostgreSQL**         | Exibe o endpoint via `DB_HOST` (não conecta diretamente) |
+| **CloudWatch Logs**        | Registra cada execução automaticamente                   |
+| **EventBridge**            | Dispara a função a cada 5 minutos                        |
+| **Terraform remote_state** | Lê o endpoint do RDS do tfstate sem hardcode             |
+
+---
+
+2 - Script que percorre arquivos .tf, para gerar contexto para IA, 
+redirecionando a saída para /tmp/tfsdump.txt:
+
+bash features/dump_project.sh . meu_projeto_dump.txt
+
+---
+
+3 - Script que ao final do laboratório pode ser executado para validar se ficou algum recurso que não foi deletado gerando custos inesperados:
+
+features/aws-resource-check.sh
+
+---
+
+# Documentações 
+
+Projeto inicial: /docs/Projeto_Anterior.md
+Análise DevOps: /docs/Projeto_Anterior.md
+
+---
+
+# Implementações Sugeridas
+
+https://landscape.cncf.io/
+
+---
+
+# Badge CKA
+
+![alt text](prints/image7.png)
+
+---
+
+# Badge AWS
+
+![alt text](prints/image6.png)
+```
+
+---
+### service1_back_java/Dockerfile
+```dockerfile
+FROM docker.io/maven:3-eclipse-temurin-21 AS build
+WORKDIR /workspace/app
+
+COPY pom.xml .
+COPY src src
+
+RUN --mount=type=cache,target=/root/.m2 mvn install -DskipTests
+RUN mkdir -p target/dependency && (cd target/dependency; jar -xf ../*.jar)
+
+FROM docker.io/eclipse-temurin:21-jdk-alpine
+RUN mkdir -p /opt/todobackend
+WORKDIR /opt/todobackend
+#RUN addgroup -S demo && adduser -S demo -G demo
+#USER demo
+VOLUME /tmp
+ARG DEPENDENCY=/workspace/app/target/dependency
+COPY --from=build ${DEPENDENCY}/BOOT-INF/lib /opt/todobackend/app/lib
+COPY --from=build ${DEPENDENCY}/META-INF /opt/todobackend/app/META-INF
+COPY --from=build ${DEPENDENCY}/BOOT-INF/classes /opt/todobackend/app
+
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.8.0/opentelemetry-javaagent.jar /opt/todobackend
+
+ENTRYPOINT ["java", "-cp", "/opt/todobackend/app:/opt/todobackend/app/lib/*",  "-javaagent:/opt/todobackend/opentelemetry-javaagent.jar","io.novatec.todobackend.TodobackendApplication"]
+```
+
+---
+### service1_back_java/requirements.txt
+```text
+flask==3.0.3
+requests==2.32.3
+
+opentelemetry-api==1.26.0
+opentelemetry-sdk==1.26.0
+
+opentelemetry-instrumentation-flask==0.47b0
+opentelemetry-instrumentation-requests==0.47b0
+
+
+```
+
+---
+### service1_back_java/src/main/resources/application-prod.properties
+```properties
+spring.datasource.url=jdbc:postgresql://${POSTGRES_HOST}:5432/${POSTGRES_DB}
+spring.datasource.username=${SPRING_DATASOURCE_USERNAME}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD}
+
+```
+
+---
+### service1_back_java/src/main/resources/application.properties
+```properties
+server.port=8080
+
+server.forward-headers-strategy=native
+
+management.endpoints.web.exposure.include=*
+
+spring.profiles.active=prod
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+#spring.jpa.properties.hibernate.format_sql=true
+
+spring.application.name=springboot-backend 
+#will be picked by otel
+#spring.sleuth.otel.config.trace-id-ratio-based=1.0
+#spring.sleuth.otel.exporter.otlp.endpoint=http://${COLLECTOR_HOST:collector}:4317
+
+otel.exporter.otlp.endpoint=http://${COLLECTOR_HOST:localhost}:4317
+otel.resource.attributes.service.name=spring-backend // will not be picked by otel :-)
+```
+
+---
+### service2_front_py/app.py
+```python
+from flask import Flask, render_template, request, jsonify, redirect, url_for
+
+import logging
+import requests
+import os
+
+app = Flask(__name__)
+logging.getLogger(__name__)
+logging.basicConfig(format='%(levelname)s:%(name)s:%(module)s:%(message)s', level=logging.INFO)
+
+# Set a default external API URL
+# Override the default URL if an environment variable is set
+app.config['BACKEND_URL'] = 'http://localhost:8080/todos/'
+app.config['BACKEND_URL'] = os.getenv('BACKEND_URL', app.config['BACKEND_URL'])
+
+@app.route('/')
+def index():
+
+    backend_url = app.config['BACKEND_URL']
+    response = requests.get(backend_url)
+    
+    logging.info("GET %s/todos/",backend_url)
+    if response.status_code == 200:
+        # Print out the response content
+        # print(response.text)
+        logging.info("Response: %s", response.text)        
+        todos = response.json()
+        
+    return render_template('index.html', todos=todos)
+
+@app.route('/add', methods=['POST'])
+def add():
+
+    if request.method == 'POST':
+        new_todo = request.form['todo']
+        logging.info("POST  %s/todos/%s",app.config['BACKEND_URL'],new_todo)
+        response = requests.post(app.config['BACKEND_URL']+new_todo)
+    return redirect(url_for('index'))
+
+@app.route('/delete', methods=['POST'])
+def delete():
+
+    if request.method == 'POST':
+        delete_todo = request.form['todo']
+        logging.info("POST  %s/todos/%s",app.config['BACKEND_URL'],delete_todo)
+        print(delete_todo)
+    response = requests.delete(app.config['BACKEND_URL']+delete_todo)
+    return redirect(url_for('index'))
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0')
+    # app.run(debug=True) # doesn't work with auto instrumentation
+```
+
+---
+### service2_front_py/Dockerfile
+```dockerfile
+# Use an official Python runtime as a parent image
+FROM docker.io/python:3-slim
+
+# Set the working directory to /app
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Install any needed packages specified in requirements.txt
+RUN pip install -r requirements.txt
+
+RUN opentelemetry-bootstrap --action=install
+
+# Make port 5000 available to the world outside this container
+EXPOSE 5000
+
+# Define environment variable
+ENV OTEL_LOGS_EXPORTER="otlp"
+ENV OTEL_METRICS_EXPORTER="otlp"
+ENV OTEL_TRACES_EXPORTER="otlp"
+ENV OTEL_EXPORTER_OTLP_ENDPOINT="localhost:4317"
+ENV OTEL_SERVICE_NAME=todoui-flask
+
+# Run app.py when the container launches
+# CMD ["flask", "run", "-p", "5000"]
+CMD ["opentelemetry-instrument","python","app.py"]
+```
+
+---
+### service2_front_py/open-api.json
+```json
+{
+    "openapi": "3.0.1",
+    "info": {
+      "title": "OpenAPI definition",
+      "version": "v0"
+    },
+    "servers": [
+      {
+        "url": "http://localhost:8080",
+        "description": "Generated server url"
+      }
+    ],
+    "paths": {
+      "/todos/{todo}": {
+        "post": {
+          "tags": [
+            "todobackend-application"
+          ],
+          "operationId": "addTodo",
+          "parameters": [
+            {
+              "name": "todo",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "*/*": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "todobackend-application"
+          ],
+          "operationId": "removeTodo",
+          "parameters": [
+            {
+              "name": "todo",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "*/*": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/todos/": {
+        "get": {
+          "tags": [
+            "todobackend-application"
+          ],
+          "operationId": "getTodos",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "*/*": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }     
+    },
+    "components": {    
+    }
+  }
+```
+
+---
+### service2_front_py/requirements.txt
+```text
+Faker==28.4.1
+Flask==3.0.3
+opentelemetry-api==1.26.0
+opentelemetry-distro==0.47b0
+opentelemetry-sdk==1.26.0
+requests==2.32.3
+```
+
+=================================================================
+  FIM DO DUMP — 89 arquivos capturados
+=================================================================

@@ -375,7 +375,7 @@ curl https://<id>.lambda-url.us-east-1.on.aws/
 2 - Script que percorre arquivos .tf, para gerar contexto para IA, 
 redirecionando a saída para /tmp/tfsdump.txt:
 
-features/tfsdump.sh
+bash features/dump_project.sh . meu_projeto_dump.txt
 
 ---
 
