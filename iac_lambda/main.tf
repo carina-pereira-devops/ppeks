@@ -59,7 +59,7 @@ resource "aws_lambda_function" "ppeks_health" {
       PROJECT_NAME         = var.project_name
       SSM_PATH_DB_USERNAME = var.ssm_path_db_username
       SSM_PATH_DB_PASSWORD = var.ssm_path_db_password
-      DB_HOST              = "see-rds-outputs"
+      DB_HOST              = data.terraform_remote_state.rds.outputs.rds_endpoint
     }
   }
 

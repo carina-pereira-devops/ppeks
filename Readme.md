@@ -238,6 +238,14 @@ Solução:
 
 ---
 
+Deleção manual de recursos (despesas extras):
+
+3 - Deletar Snashot RDS 
+2 - Deletar Imagens e ECRs
+3 - Deletar tfstate e RDS
+
+---
+
 # Supérfluos
 
 Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
