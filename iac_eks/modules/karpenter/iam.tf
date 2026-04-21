@@ -48,8 +48,8 @@ resource "aws_iam_policy" "karpenter_controller" {
       # detect the cluster CIDR" e EC2NodeClass fica NotReady
       # --------------------------------------------------------
       {
-        Effect = "Allow"
-        Action = ["eks:DescribeCluster"]
+        Effect   = "Allow"
+        Action   = ["eks:DescribeCluster"]
         Resource = "arn:aws:eks:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
       },
 
@@ -96,8 +96,8 @@ resource "aws_iam_policy" "karpenter_controller" {
       # IAM — passar a node role para as instâncias EC2
       # --------------------------------------------------------
       {
-        Effect = "Allow"
-        Action = ["iam:PassRole"]
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
         Resource = aws_iam_role.karpenter_node.arn
       },
 
@@ -125,6 +125,23 @@ resource "aws_iam_policy" "karpenter_controller" {
           "iam:TagInstanceProfile"
         ]
         Resource = "*"
+      },
+
+      # --------------------------------------------------------
+      # IAM — criar Service Linked Role para EC2 Spot
+      # A AWSServiceRoleForEC2Spot já existe na conta, mas o
+      # Karpenter tenta criá-la na inicialização e precisa da
+      # permissão — mesmo que a role já exista na conta.
+      # --------------------------------------------------------
+      {
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = "arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot"
+        Condition = {
+          StringLike = {
+            "iam:AWSServiceName" = "spot.amazonaws.com"
+          }
+        }
       },
 
       # --------------------------------------------------------
