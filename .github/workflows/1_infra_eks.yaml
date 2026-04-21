@@ -38,18 +38,11 @@ jobs:
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
 
       - name: Terraform Init
-        run: |
-          cd iac_eks && terraform init
+        run: cd iac_eks && terraform init
 
       - name: Terraform Validate
-        run: terraform validate
+        run: cd iac_eks && terraform validate
 
-      # -------------------------------------------------------
-      # Limpeza de recursos Kubernetes ANTES do destroy
-      # Necessário porque o ALB Controller cria ALBs e ENIs
-      # fora do Terraform — se não forem deletados antes,
-      # a VPC fica bloqueada e o destroy trava por 20+ minutos
-      # -------------------------------------------------------
       - name: Limpar recursos Kubernetes antes do destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         run: |
@@ -77,17 +70,47 @@ jobs:
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
-        run: cd iac_eks &&
-          terraform destroy -auto-approve
+        run: cd iac_eks && terraform destroy -auto-approve
 
-      - name: Terraform Plan
+      - name: "Terraform Apply — 1/3 Rede + Cluster + MGN"
         if: steps.read-destroy-config.outputs.destroy != 'true'
-        id: terraform-plan
-        run: cd iac_eks &&
-          terraform plan -out="prd.plan"
+        run: |
+          cd iac_eks
+          terraform apply -auto-approve \
+            -target=module.eks_network \
+            -target=module.eks_cluster \
+            -target=module.eks_managed_node_group
 
-      - name: Terraform Apply
+      - name: "Terraform Apply — 2/3 ALB Controller + Karpenter IAM + Helm"
         if: steps.read-destroy-config.outputs.destroy != 'true'
-        id: terraform-apply
-        run: cd iac_eks &&
-          terraform apply -auto-approve  
+        run: |
+          cd iac_eks
+          terraform apply -auto-approve \
+            -target=module.eks_aws_load_balancer_controller \
+            -target=module.eks_karpenter.aws_iam_role.karpenter_controller \
+            -target=module.eks_karpenter.aws_iam_role.karpenter_node \
+            -target=module.eks_karpenter.aws_iam_instance_profile.karpenter_node \
+            -target=module.eks_karpenter.aws_iam_policy.karpenter_controller \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_controller \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_worker \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_ecr \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_cni \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_ssm \
+            -target=module.eks_karpenter.aws_eks_access_entry.karpenter_node \
+            -target=module.eks_karpenter.aws_sqs_queue.karpenter_interruption \
+            -target=module.eks_karpenter.aws_sqs_queue_policy.karpenter_interruption \
+            -target=module.eks_karpenter.aws_cloudwatch_event_rule.spot_interruption \
+            -target=module.eks_karpenter.aws_cloudwatch_event_target.spot_interruption \
+            -target=module.eks_karpenter.aws_cloudwatch_event_rule.instance_rebalance \
+            -target=module.eks_karpenter.aws_cloudwatch_event_target.instance_rebalance \
+            -target=module.eks_karpenter.aws_cloudwatch_event_rule.instance_state_change \
+            -target=module.eks_karpenter.aws_cloudwatch_event_target.instance_state_change \
+            -target=module.eks_karpenter.helm_release.karpenter
+
+      - name: "Terraform Apply — 3/3 Karpenter NodePool + EC2NodeClass"
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          cd iac_eks
+          echo ">> Aguardando CRDs do Karpenter propagarem..."
+          sleep 30
+          terraform apply -auto-approve
