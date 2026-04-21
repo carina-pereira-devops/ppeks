@@ -248,9 +248,131 @@ Deleção manual de recursos (despesas extras):
 
 # Supérfluos
 
-Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
+1 - Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
 
-Script que percorre arquivos .tf, para gerar contexto para IA, 
+A função Lambda `ppeks-health-check` é uma aplicação web serverless que atua como **ponto central de verificação de saúde** dos recursos da infraestrutura do projeto `ppeks`. Ela é exposta publicamente via **Function URL** — ou seja, gera um endpoint HTTP diretamente, sem necessidade de API Gateway.
+
+Quando acessada (via browser, `curl`, ou pelo EventBridge), a função executa três verificações em sequência e retorna um JSON com o resultado.
+
+1.1 - Verifica as credenciais no SSM Parameter Store
+
+```python
+param = ssm.get_parameter(
+    Name=os.environ['SSM_PATH_DB_USERNAME'],
+    WithDecryption=False
+)
+```
+
+Lê o parâmetro `/db/username` do **AWS Systems Manager Parameter Store** — o mesmo repositório de credenciais usado pelo backend Java e pelo workflow de deploy. Confirma que:
+
+- A IAM Role da Lambda tem permissão de leitura no SSM
+
+- O parâmetro existe e está acessível
+
+1.2 - Lê o endpoint do RDS via variável de ambiente
+
+```python
+results['db_host'] = os.environ.get('DB_HOST', 'not-configured')
+```
+
+O `DB_HOST` é injetado pelo Terraform no momento do `apply`, lendo o endpoint diretamente do tfstate do RDS via `terraform_remote_state`. Isso garante que a Lambda sempre aponta para o banco correto, sem valores hardcoded.
+
+1.3 - Retorna o status como resposta HTTP
+
+```json
+{
+  "db_user_found": true,
+  "db_user": "matthias",
+  "db_host": "ppeks-postgres.xxxxxx.us-east-1.rds.amazonaws.com",
+  "project": "ppeks",
+  "status": "ok",
+  "message": "ppeks Lambda health check executado com sucesso"
+}
+```
+
+A resposta segue o formato esperado pela **Function URL** (`statusCode`, `headers`, `body`), tornando-a compatível com qualquer browser ou cliente HTTP.
+
+1.4 - Infraestrutura associada
+
+IAM Role
+
+A Lambda executa com uma IAM Role dedicada (`ppeks-lambda-role`) com apenas duas permissões:
+- `AWSLambdaBasicExecutionRole` — escrita de logs no CloudWatch
+- `AmazonSSMReadOnlyAccess` — leitura de parâmetros no SSM
+
+Nenhuma permissão de escrita, nenhum acesso ao banco diretamente — **princípio do menor privilégio**.
+
+1.5 - Function URL
+
+```
+https://<id>.lambda-url.us-east-1.on.aws/
+```
+
+Endpoint HTTP público gerado automaticamente pela AWS. Não requer API Gateway. Método permitido: `GET`.
+
+1.6 - EventBridge (agendamento)
+
+Um gatilho automático executa a Lambda **a cada 5 minutos** via `rate(5 minutes)`. Isso serve para:
+
+- Manter a Lambda "aquecida" (reduz cold start)
+
+- Gerar logs periódicos no CloudWatch
+
+- Funcionar como um monitor contínuo da infraestrutura
+
+1.7 - Fluxo completo
+
+```
+Browser / curl
+      │
+      ▼
+Function URL (HTTPS)
+      │
+      ▼
+Lambda ppeks-health-check
+      │
+      ├──► SSM Parameter Store  →  /db/username
+      │
+      ├──► Variável DB_HOST     →  endpoint do RDS (via Terraform remote_state)
+      │
+      └──► Retorna JSON com status
+```
+
+```
+EventBridge (rate 5min)
+      │
+      ▼
+Lambda ppeks-health-check  →  CloudWatch Logs
+```
+
+1.8 - Como acessar
+
+Após o `terraform apply` do `iac_lambda`, o output exibe a URL:
+
+```bash
+terraform output lambda_function_url
+# https://<id>.lambda-url.us-east-1.on.aws/
+```
+
+1.9 - Acesse no browser ou via terminal:
+
+```bash
+curl https://<id>.lambda-url.us-east-1.on.aws/
+```
+
+1.10 - Relação com o restante do projeto
+
+| Recurso                    | Como a Lambda usa                                        |
+|                            |                                                          |
+| **SSM Parameter Store**    | Lê `/db/username` para validar credenciais               |
+| **RDS PostgreSQL**         | Exibe o endpoint via `DB_HOST` (não conecta diretamente) |
+| **CloudWatch Logs**        | Registra cada execução automaticamente                   |
+| **EventBridge**            | Dispara a função a cada 5 minutos                        |
+| **Terraform remote_state** | Lê o endpoint do RDS do tfstate sem hardcode             |
+
+---
+
+2 - Script que percorre arquivos .tf, para gerar contexto para IA, 
 redirecionando a saída para /tmp/tfsdump.txt:
 
 tfsdump.sh

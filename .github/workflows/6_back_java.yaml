@@ -24,30 +24,37 @@ jobs:
       - name: Configure kubectl for EKS
         run: |
           aws eks update-kubeconfig \
-            --name SEU_CLUSTER_EKS \
+            --name ppeks-cluster \
             --region us-east-1
 
-      - name: Ler outputs do RDS
+      - name: Ler outputs do RDS via tfstate S3
         id: rds
         run: |
-          cd rds
-          RDS_HOST=$(terraform output -raw rds_endpoint)
-          RDS_DB=$(terraform output -raw rds_db_name)
+          RDS_HOST=$(aws s3 cp s3://tfstate-ppeks/rds/terraform.tfstate - | \
+            python3 -c "import sys,json; s=json.load(sys.stdin); print(s['outputs']['rds_endpoint']['value'])")
+          RDS_DB=$(aws s3 cp s3://tfstate-ppeks/rds/terraform.tfstate - | \
+            python3 -c "import sys,json; s=json.load(sys.stdin); print(s['outputs']['rds_db_name']['value'])")
           echo "rds_host=$RDS_HOST" >> $GITHUB_OUTPUT
-          echo "rds_db=$RDS_DB" >> $GITHUB_OUTPUT
+          echo "rds_db=$RDS_DB"     >> $GITHUB_OUTPUT
+
+      - name: Criar namespace se não existir
+        run: |
+          kubectl get namespace appback || kubectl create namespace appback
 
       - name: Criar/atualizar Secret com credenciais do banco
         run: |
-          USERNAME=$(aws ssm get-parameter --name "/app/dev/db/username" --query "Parameter.Value" --output text)
-          PASSWORD=$(aws ssm get-parameter --name "/app/dev/db/password" --with-decryption --query "Parameter.Value" --output text)
+          USERNAME=$(aws ssm get-parameter --name "/db/username" --query "Parameter.Value" --output text)
+          PASSWORD=$(aws ssm get-parameter --name "/db/password" --with-decryption --query "Parameter.Value" --output text)
 
           kubectl create secret generic app-db-credentials \
             --from-literal=SPRING_DATASOURCE_USERNAME=$USERNAME \
             --from-literal=SPRING_DATASOURCE_PASSWORD=$PASSWORD \
+            --namespace appback \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy backend com Helm
         run: |
           helm upgrade --install service1 ./helm/service1 \
+            --namespace appback \
             --set env.POSTGRES_HOST=${{ steps.rds.outputs.rds_host }} \
             --set env.POSTGRES_DB=${{ steps.rds.outputs.rds_db }}
