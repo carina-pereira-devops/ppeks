@@ -54,7 +54,7 @@ jobs:
 
       - name: Deploy backend com Helm
         run: |
-          helm upgrade --install java-back ./charts/back-java \
+          helm upgrade --install java-back ./charts/java-back \
             --namespace appback \
             --set env.POSTGRES_HOST=${{ steps.rds.outputs.rds_host }} \
             --set env.POSTGRES_DB=${{ steps.rds.outputs.rds_db }}
