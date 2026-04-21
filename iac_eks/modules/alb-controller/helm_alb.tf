@@ -19,16 +19,10 @@ resource "helm_release" "eks_helm_controller" {
 
     vpcId = var.vpc_id
 
-    # ALB Controller não é DaemonSet — precisa de toleration explícita
-    # para rodar nos nodes do MGN (que têm taint node-role=system:NoSchedule)
-    tolerations = [
-      {
-        key      = "node-role"
-        operator = "Equal"
-        value    = "system"
-        effect   = "NoSchedule"
-      }
-    ]
+    tolerations = [{
+      key      = "CriticalAddonsOnly"
+      operator = "Exists" # ← Exists, não Equal — é como o EKS usa
+    }]
 
     affinity = {
       nodeAffinity = {
@@ -37,9 +31,8 @@ resource "helm_release" "eks_helm_controller" {
             {
               matchExpressions = [
                 {
-                  key      = "node-role"
-                  operator = "In"
-                  values   = ["system"]
+                  key      = "CriticalAddonsOnly"
+                  operator = "Exists"
                 }
               ]
             }

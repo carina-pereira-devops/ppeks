@@ -22,15 +22,14 @@ resource "aws_eks_node_group" "eks_managed_node_group" {
   # aqui: kube-proxy, aws-node, coredns, karpenter
   # Qualquer outro pod sem toleration vai para nodes do Karpenter
   # ============================================================
-  taint {
-    key    = "node-role"
-    value  = "system"
-    effect = "NO_SCHEDULE" # não agenda pods sem toleration
-  }
-
-  labels = {
-    "node-role" = "system"
-  }
+taint {
+  key    = "CriticalAddonsOnly"
+  value  = "true"
+  effect = "NO_SCHEDULE"
+}
+labels = {
+  "CriticalAddonsOnly" = "true"
+}
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_eks_role_attachment_worker,

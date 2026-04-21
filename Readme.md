@@ -99,13 +99,37 @@ kubectl config use-context  arn:aws:eks:us-east-1:749000351410:cluster/ppeks-clu
 Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
 ```
 
-# MGN
+# MGN/Karpenter
 
 Nodes que vão receber apenas pods do kube-proxy, aws-node, coredns, karpenter:
 
 ![NODES](prints/image9.png)
 
 ![EFFECT](prints/image8.png)
+
+Visão micro:
+
+![MGN](prints/image10.png)
+
+```
+1. Você faz deploy da sua app (helm install java-back)
+        ↓
+2. Pod fica em Pending — nenhum node disponível
+        ↓
+3. Karpenter detecta o pod Pending em segundos
+        ↓
+4. Lê o NodePool — quais instâncias spot são permitidas?
+        ↓
+5. Chama a API da AWS e provisiona uma EC2 spot
+        ↓
+6. Node entra no cluster (~60-90 segundos)
+        ↓
+7. Pod é agendado no novo node → Running ✅
+        ↓
+8. App fica ociosa por tempo configurado (ex: 30 min)
+        ↓
+9. Karpenter remove o node automaticamente → $ economizado
+```
 
 # Features
 
@@ -405,6 +429,9 @@ Análise DevOps: /docs/Projeto_Anterior.md
 # Implementações Sugeridas
 
 https://landscape.cncf.io/
+
+
+![alt text](prints/image11.png)
 
 ---
 

@@ -31,16 +31,10 @@ resource "helm_release" "karpenter" {
         interruptionQueue = aws_sqs_queue.karpenter_interruption.name
       }
 
-      # Karpenter roda APENAS nos nodes do MGN (sistema)
-      # Taint node-role=system:NoSchedule aplicado no MGN
-      tolerations = [
-        {
-          key      = "node-role"
-          operator = "Equal"
-          value    = "system"
-          effect   = "NoSchedule"
-        }
-      ]
+      tolerations = [{
+        key      = "CriticalAddonsOnly"
+        operator = "Exists" # ← Exists, não Equal — é como o EKS usa
+      }]
 
       affinity = {
         nodeAffinity = {
@@ -49,9 +43,8 @@ resource "helm_release" "karpenter" {
               {
                 matchExpressions = [
                   {
-                    key      = "node-role"
-                    operator = "In"
-                    values   = ["system"]
+                    key      = "CriticalAddonsOnly"
+                    operator = "Exists"
                   }
                 ]
               }
