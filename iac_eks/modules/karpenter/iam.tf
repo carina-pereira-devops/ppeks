@@ -49,9 +49,7 @@ resource "aws_iam_policy" "karpenter_controller" {
       # --------------------------------------------------------
       {
         Effect = "Allow"
-        Action = [
-          "eks:DescribeCluster"
-        ]
+        Action = ["eks:DescribeCluster"]
         Resource = "arn:aws:eks:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
       },
 
@@ -98,21 +96,35 @@ resource "aws_iam_policy" "karpenter_controller" {
       # IAM — passar a node role para as instâncias EC2
       # --------------------------------------------------------
       {
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
         Resource = aws_iam_role.karpenter_node.arn
       },
 
       # --------------------------------------------------------
-      # IAM — ler o Instance Profile dos nodes
-      # Necessário para o Karpenter confirmar InstanceProfileReady
+      # IAM — gerenciar Instance Profile dos nodes
+      #
+      # ATENÇÃO: No Karpenter v1.x, quando o campo "role" é
+      # definido no EC2NodeClass, o Karpenter gerencia o ciclo
+      # de vida completo do Instance Profile internamente.
+      # O nome gerado é dinâmico (ex: ppeks-cluster_982766...)
+      # portanto o Resource precisa ser "*".
+      #
+      # O aws_iam_instance_profile criado no Terraform abaixo
+      # é mantido apenas como referência — o Karpenter cria
+      # e gerencia o seu próprio Instance Profile.
       # --------------------------------------------------------
       {
         Effect = "Allow"
         Action = [
-          "iam:GetInstanceProfile"
+          "iam:GetInstanceProfile",
+          "iam:CreateInstanceProfile",
+          "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:DeleteInstanceProfile",
+          "iam:TagInstanceProfile"
         ]
-        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:instance-profile/${var.project_name}-karpenter-node"
+        Resource = "*"
       },
 
       # --------------------------------------------------------
@@ -195,7 +207,10 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Instance Profile — necessário para EC2 assumir a role
+# Instance Profile — mantido no Terraform para referência e
+# para garantir que a role exista antes do Karpenter subir.
+# O Karpenter v1.x cria seu próprio Instance Profile com nome
+# dinâmico internamente — este não será usado por ele.
 resource "aws_iam_instance_profile" "karpenter_node" {
   name = "${var.project_name}-karpenter-node"
   role = aws_iam_role.karpenter_node.name

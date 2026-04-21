@@ -101,6 +101,10 @@ Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
 
 # MGN/Karpenter
 
+Validações:
+kubectl get ec2nodeclasses
+kubectl get nodepools
+
 Nodes que vão receber apenas pods do kube-proxy, aws-node, coredns, karpenter:
 
 ![NODES](prints/image9.png)
