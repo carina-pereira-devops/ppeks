@@ -1,63 +1,93 @@
 # Infra IaC
 name: "1 - Deploy/Destroy da Infra do Cluster EKS"
 
-# Commit na branch main
 on:
-#  push:          # Se execução automatica
-#    branches:
-#      - main         
-#    paths:               
-#      - 'iac_eks/**'
-  workflow_dispatch: # Habilitando apenas execução manual
+  workflow_dispatch:
 
-# Configurações da AWS
 permissions:
   id-token: write
   contents: read
 
-# Único Job  
 jobs:
   build:
     name: eks
-    runs-on: ubuntu-latest # definições de SO
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
-    steps: # Etapas de execução   
-      - name: Checkout code      # Git
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v4
-      - name: Setup Terraform    # Terraform
+
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.3
-          terraform_wrapper: false # Erro "Too many command line arguments. Did you mean to use -chdir?"
+          terraform_wrapper: false
+
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4 #uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
           aws-region: "us-east-1"
-      - name: Read destroy configuration # Validação caso necessário deletar o ambiente
+
+      - name: Read destroy configuration
         id: read-destroy-config
         run: |
           DESTROY="$(jq -r '.boolean' ./iac_eks/destroy_config.json)"
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
-      - name: Terraform Init   # Inicializando Terraform com algumas especificações
+
+      - name: Terraform Init
         run: |
-          cd iac_eks && terraform init 
-      - name: Terraform Validate # Validação código terraform
+          cd iac_eks && terraform init
+
+      - name: Terraform Validate
         run: terraform validate
+
+      # -------------------------------------------------------
+      # Limpeza de recursos Kubernetes ANTES do destroy
+      # Necessário porque o ALB Controller cria ALBs e ENIs
+      # fora do Terraform — se não forem deletados antes,
+      # a VPC fica bloqueada e o destroy trava por 20+ minutos
+      # -------------------------------------------------------
+      - name: Limpar recursos Kubernetes antes do destroy
+        if: steps.read-destroy-config.outputs.destroy == 'true'
+        run: |
+          aws eks update-kubeconfig \
+            --name ppeks-cluster \
+            --region us-east-1
+
+          echo ">> Deletando Ingress (força remoção dos ALBs pela AWS)..."
+          kubectl delete ingress --all --all-namespaces --ignore-not-found=true || true
+
+          echo ">> Deletando Services do tipo LoadBalancer..."
+          kubectl delete svc --all --all-namespaces \
+            --field-selector spec.type=LoadBalancer \
+            --ignore-not-found=true || true
+
+          echo ">> Aguardando 60s para AWS remover os ALBs e ENIs..."
+          sleep 60
+
+          echo ">> Deletando todos os namespaces do projeto..."
+          kubectl delete namespace appback appfront --ignore-not-found=true || true
+
+          echo ">> Aguardando 30s para finalizar limpeza..."
+          sleep 30
+
       - name: Terraform Destroy
-        if: steps.read-destroy-config.outputs.destroy == 'true' # Se"true" ambiente será destrído se "false" ambiente será criado
+        if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
         run: cd iac_eks &&
-          terraform destroy -auto-approve        
-      - name: Terraform Plan # StateFile diferente para cada Workspace (Desenvolvimento... Produção ...) 
-        if: steps.read-destroy-config.outputs.destroy != 'true' # Só executa quando a opção de destruição não for verdadeira
+          terraform destroy -auto-approve
+
+      - name: Terraform Plan
+        if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-plan
         run: cd iac_eks &&
           terraform plan -out="prd.plan"
-      - name: Terraform Apply # Construção da infra de acordo com o planejamento por ambiente na etapa anterior 
-        if: steps.read-destroy-config.outputs.destroy != 'true' # Só executa quando a opção de destruição não for verdadeira
+
+      - name: Terraform Apply
+        if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
         run: cd iac_eks &&
-          terraform apply -auto-approve
+          terraform apply -auto-approve  

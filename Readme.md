@@ -375,11 +375,24 @@ curl https://<id>.lambda-url.us-east-1.on.aws/
 2 - Script que percorre arquivos .tf, para gerar contexto para IA, 
 redirecionando a saída para /tmp/tfsdump.txt:
 
-tfsdump.sh
+features/tfsdump.sh
 
 ---
 
-# Implementações
+3 - Script que ao final do laboratório pode ser executado para validar se ficou algum recurso que não foi deletado gerando custos inesperados:
+
+features/aws-resource-check.sh
+
+---
+
+# Documentações 
+
+Projeto inicial: /docs/Projeto_Anterior.md
+Análise DevOps: /docs/Projeto_Anterior.md
+
+---
+
+# Implementações Sugeridas
 
 https://landscape.cncf.io/
 
