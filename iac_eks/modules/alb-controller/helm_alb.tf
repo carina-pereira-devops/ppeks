@@ -5,12 +5,63 @@ resource "helm_release" "eks_helm_controller" {
   version    = "1.4.7"
   namespace  = "kube-system"
 
-    values = [yamlencode({
+  # Aguarda o pod estar Running antes de continuar o terraform
+  wait    = true
+  timeout = 600 # 10 min — nodes do MGN podem demorar para estar prontos
+
+  values = [yamlencode({
     clusterName = var.cluster_name
+
     serviceAccount = {
       create = false
       name   = "aws-load-balancer-controller"
     }
+
     vpcId = var.vpc_id
+
+    # ALB Controller não é DaemonSet — precisa de toleration explícita
+    # para rodar nos nodes do MGN (que têm taint node-role=system:NoSchedule)
+    tolerations = [
+      {
+        key      = "node-role"
+        operator = "Equal"
+        value    = "system"
+        effect   = "NoSchedule"
+      }
+    ]
+
+    affinity = {
+      nodeAffinity = {
+        requiredDuringSchedulingIgnoredDuringExecution = {
+          nodeSelectorTerms = [
+            {
+              matchExpressions = [
+                {
+                  key      = "node-role"
+                  operator = "In"
+                  values   = ["system"]
+                }
+              ]
+            }
+          ]
+        }
+      }
+      # Anti-affinity: distribui as 2 réplicas em nodes diferentes
+      podAntiAffinity = {
+        preferredDuringSchedulingIgnoredDuringExecution = [
+          {
+            weight = 100
+            podAffinityTerm = {
+              labelSelector = {
+                matchLabels = {
+                  "app.kubernetes.io/name" = "aws-load-balancer-controller"
+                }
+              }
+              topologyKey = "kubernetes.io/hostname"
+            }
+          }
+        ]
+      }
+    }
   })]
 }

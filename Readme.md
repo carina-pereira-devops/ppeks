@@ -99,6 +99,14 @@ kubectl config use-context  arn:aws:eks:us-east-1:749000351410:cluster/ppeks-clu
 Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
 ```
 
+# MGN
+
+Nodes que vão receber apenas pods do kube-proxy, aws-node, coredns, karpenter:
+
+![NODES](prints/image9.png)
+
+![EFFECT](prints/image8.png)
+
 # Features
 
 1 - Instalação manual via kubectl, do deploy de métricas, para coleta de informações de CPU e Memória de Nodes e Pods:

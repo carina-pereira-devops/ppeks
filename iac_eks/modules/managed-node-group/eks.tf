@@ -25,7 +25,7 @@ resource "aws_eks_node_group" "eks_managed_node_group" {
   taint {
     key    = "node-role"
     value  = "system"
-    effect = "NO_SCHEDULE"
+    effect = "NO_SCHEDULE" # não agenda pods sem toleration
   }
 
   labels = {
