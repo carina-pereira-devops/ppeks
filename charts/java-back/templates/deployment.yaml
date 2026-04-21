@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: java_back
+  name: java-back
   labels:
-    app: java_back
+    app: java-back
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: java_back
+      app: java-back
   template:
     metadata:
       labels:
-        app: java_back
+        app: java-back
     spec:
       containers:
-        - name: java_back
+        - name: java-back
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
