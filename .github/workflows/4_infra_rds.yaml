@@ -1,4 +1,4 @@
-name: "Deploy/Destroy do RDS PostgreSQL"
+name: "4 - Deploy/Destroy do RDS PostgreSQL"
 
 on:
   workflow_dispatch:

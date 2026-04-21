@@ -1,4 +1,4 @@
-name: "Deploy Backend Java no EKS"
+name: "6 - Deploy Backend Java no EKS"
 
 on:
   workflow_dispatch:

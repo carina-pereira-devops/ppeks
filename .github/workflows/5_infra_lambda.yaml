@@ -1,4 +1,4 @@
-name: "Deploy/Destroy da Lambda ppeks"
+name: "5 - Deploy/Destroy da Lambda ppeks"
 
 on:
   workflow_dispatch:
