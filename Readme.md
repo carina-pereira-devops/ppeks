@@ -247,3 +247,15 @@ Criação de alguns recursos como uma Lambda, apenas para adição de créditos 
 # Implementações
 
 https://landscape.cncf.io/
+
+---
+
+# Badge CKA
+
+![alt text](prints/image7.png)
+
+---
+
+# Badge AWS
+
+![alt text](prints/image6.png)

@@ -1,6 +1,6 @@
 # Estrutura DevOps Senior — Ambiente Corporativo do Zero
 
-## Comparação da Construção deste projeto em um ambiente Corporativo
+## Comparação da Construção deste projeto com um ambiente Corporativo
 Antes de escrever qualquer linha de código, um DevOps Senior pensa em três pilares:
 
 1. **Separação de responsabilidades** — cada coisa no seu lugar, cada pipeline com um propósito
