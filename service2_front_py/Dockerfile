@@ -12,8 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir setuptools -r requirements.txt
 
-RUN opentelemetry-bootstrap --action=install
-
 EXPOSE 5000
 
 ENV OTEL_LOGS_EXPORTER=otlp
