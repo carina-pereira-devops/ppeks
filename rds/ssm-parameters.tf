@@ -3,6 +3,7 @@ resource "aws_ssm_parameter" "db_username" {
   description = "User da aplicação para o RDS"
   type        = "String"
   value       = "matthias"
+  overwrite   = true
 }
 
 resource "aws_ssm_parameter" "db_password" {
@@ -10,6 +11,7 @@ resource "aws_ssm_parameter" "db_password" {
   description = "Senha da aplicação para o RDS"
   type        = "SecureString"
   value       = "password"  # ou um valor inicial
+  overwrite   = true
 
   lifecycle {
     ignore_changes = [value]
