@@ -1,4 +1,16 @@
-# Infra IaC
+# ─────────────────────────────────────────────────────────────────────────────
+# Workflow 1 — Deploy/Destroy da Infra do Cluster EKS
+#
+# FUNCIONAMENTO DO destroy_config.json:
+#   { "boolean": "false" } → executa o Apply (cria infra)
+#   { "boolean": "true"  } → executa o Destroy (destrói infra)
+#
+# CORREÇÃO APLICADA:
+#   O step de limpeza K8s agora verifica SE o cluster existe antes de
+#   tentar se conectar. Se não existir, pula silenciosamente.
+#   Isso resolve o erro:
+#   "ResourceNotFoundException: No cluster found for name: ppeks-cluster"
+# ─────────────────────────────────────────────────────────────────────────────
 name: "1 - Deploy/Destroy da Infra do Cluster EKS"
 
 on:
@@ -15,63 +27,158 @@ jobs:
     defaults:
       run:
         shell: bash
+
     steps:
+
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ── 2. Setup Terraform ──────────────────────────────────────────────────
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.3
           terraform_wrapper: false
 
+      # ── 3. Autenticação AWS via OIDC ────────────────────────────────────────
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: "arn:aws:iam::749000351410:role/github-carina-devops-pipe"
           aws-region: "us-east-1"
 
+      # ── 4. Lê o destroy_config.json ─────────────────────────────────────────
+      # O arquivo iac_eks/destroy_config.json controla se é Apply ou Destroy.
+      # Exemplo: { "boolean": "false" } = Apply | { "boolean": "true" } = Destroy
       - name: Read destroy configuration
         id: read-destroy-config
         run: |
           DESTROY="$(jq -r '.boolean' ./iac_eks/destroy_config.json)"
-          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+          echo "destroy=${DESTROY}" >> $GITHUB_OUTPUT
+          echo "Modo destroy: ${DESTROY}"
 
+      # ── 5. Terraform Init ───────────────────────────────────────────────────
       - name: Terraform Init
         run: cd iac_eks && terraform init
 
+      # ── 6. Terraform Validate ───────────────────────────────────────────────
       - name: Terraform Validate
         run: cd iac_eks && terraform validate
 
-      - name: Limpar recursos Kubernetes antes do destroy
+      # ── 7. Limpeza de recursos Kubernetes antes do Destroy ──────────────────
+      # ─────────────────────────────────────────────────────────────────────────
+      # POR QUE essa limpeza existe?
+      #
+      # O Terraform não consegue destruir a VPC se ainda existirem ENIs (Elastic
+      # Network Interfaces) criadas pelo ALB Controller ou pelo Istio Ingress.
+      # Esses recursos são criados PELO Kubernetes (fora do controle do Terraform),
+      # então o Terraform não sabe que eles existem e não consegue deletá-los.
+      #
+      # Ordem correta de limpeza:
+      #   1. Deletar Ingress → ALB Controller remove o ALB e as ENIs da VPC
+      #   2. Deletar Services LoadBalancer → remove NLBs se houver
+      #   3. Aguardar AWS processar as remoções (60s)
+      #   4. Deletar namespaces → remove Pods e PVCs restantes
+      #   5. Aguardar finalizers dos namespaces (30s)
+      #   6. Só então o Terraform Destroy consegue remover VPC e subnets
+      #
+      # CORREÇÃO DO BUG:
+      #   Antes: o step rodava direto o aws eks update-kubeconfig e falhava
+      #          com ResourceNotFoundException se o cluster não existia.
+      #   Agora: verificamos via AWS CLI se o cluster existe ANTES de tentar
+      #          qualquer operação kubectl. Se não existir, pulamos tudo.
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: Limpar recursos Kubernetes antes do Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         run: |
+          echo ">> Verificando se o cluster ppeks-cluster existe na AWS..."
+
+          # aws eks describe-cluster retorna exit code 254 se não existir.
+          # Capturamos o status sem deixar o script falhar (set +e).
+          set +e
+          aws eks describe-cluster \
+            --name ppeks-cluster \
+            --region us-east-1 \
+            --query "cluster.status" \
+            --output text 2>/dev/null
+          CLUSTER_EXISTS=$?
+          set -e
+
+          if [ $CLUSTER_EXISTS -ne 0 ]; then
+            echo ">> Cluster ppeks-cluster NÃO encontrado na AWS."
+            echo ">> Nenhuma limpeza K8s necessária. Prosseguindo para o Destroy."
+            exit 0
+          fi
+
+          echo ">> Cluster encontrado. Configurando kubeconfig..."
           aws eks update-kubeconfig \
             --name ppeks-cluster \
             --region us-east-1
 
-          echo ">> Deletando Ingress (força remoção dos ALBs pela AWS)..."
+          # ── Limpeza do Istio (se instalado) ──────────────────────────────
+          # O Istio Ingress Gateway pode ter criado ENIs na VPC.
+          # Precisamos remover o Ingress e o Gateway antes do Terraform Destroy.
+          echo ">> Removendo recursos do Istio (Gateway, VirtualService, Ingress)..."
+          kubectl delete -f charts/istio/templates/ingress.yaml        --ignore-not-found=true || true
+          kubectl delete -f charts/istio/templates/virtualservice.yaml --ignore-not-found=true || true
+          kubectl delete -f charts/istio/templates/gateway.yaml        --ignore-not-found=true || true
+
+          # ── Remover todos os Ingress (força remoção dos ALBs pela AWS) ────
+          echo ">> Deletando todos os Ingress (força remoção dos ALBs e ENIs)..."
           kubectl delete ingress --all --all-namespaces --ignore-not-found=true || true
 
+          # ── Remover Services do tipo LoadBalancer ─────────────────────────
           echo ">> Deletando Services do tipo LoadBalancer..."
-          kubectl delete svc --all --all-namespaces \
+          kubectl delete svc \
+            --all \
+            --all-namespaces \
             --field-selector spec.type=LoadBalancer \
             --ignore-not-found=true || true
 
-          echo ">> Aguardando 60s para AWS remover os ALBs e ENIs..."
+          # ── Aguardar AWS processar as remoções ────────────────────────────
+          # O ALB Controller precisa de tempo para chamar a AWS API e remover
+          # os ALBs e ENIs. Se pularmos esse sleep, o Terraform vai tentar
+          # destruir a VPC enquanto ainda existem ENIs → erro de dependência.
+          echo ">> Aguardando 90s para AWS remover ALBs, Target Groups e ENIs..."
+          sleep 90
+
+          # ── Desinstalar Istio via Helm (libera ENIs do IngressGateway) ────
+          echo ">> Desinstalando Istio Ingress Gateway..."
+          helm uninstall istio-ingressgateway -n istio-system --ignore-not-found || true
+
+          echo ">> Desinstalando istiod..."
+          helm uninstall istiod -n istio-system --ignore-not-found || true
+
+          echo ">> Desinstalando istio-base (CRDs)..."
+          helm uninstall istio-base -n istio-system --ignore-not-found || true
+
+          # ── Deletar namespaces das aplicações ─────────────────────────────
+          # Isso remove todos os Pods, Services e PVCs dos namespaces do projeto.
+          echo ">> Deletando namespaces das aplicações..."
+          kubectl delete namespace appback appfront istio-system \
+            --ignore-not-found=true || true
+
+          # ── Aguardar finalizers dos namespaces ────────────────────────────
+          # Namespaces com recursos (PVCs, Pods) levam tempo para terminar.
+          # Se o Terraform rodar antes, pode encontrar ENIs ainda em uso.
+          echo ">> Aguardando 60s para finalizers dos namespaces concluírem..."
           sleep 60
 
-          echo ">> Deletando todos os namespaces do projeto..."
-          kubectl delete namespace appback appfront --ignore-not-found=true || true
+          echo ">> Limpeza Kubernetes concluída. Pronto para Terraform Destroy."
 
-          echo ">> Aguardando 30s para finalizar limpeza..."
-          sleep 30
-
+      # ── 8. Terraform Destroy ────────────────────────────────────────────────
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
         run: cd iac_eks && terraform destroy -auto-approve
 
+      # ── 9. Terraform Apply — 1/3: Rede + Cluster + MGN ─────────────────────
+      # Primeira etapa: cria a fundação da infraestrutura.
+      # A VPC, subnets, IGW, NGW precisam existir antes do cluster.
+      # O cluster EKS precisa existir antes do Karpenter e ALB Controller.
+      # O MGN (Managed Node Group) precisa existir para o Karpenter ter
+      # ao menos 1 node para seu próprio Pod subir.
       - name: "Terraform Apply — 1/3 Rede + Cluster + MGN"
         if: steps.read-destroy-config.outputs.destroy != 'true'
         run: |
@@ -81,6 +188,15 @@ jobs:
             -target=module.eks_cluster \
             -target=module.eks_managed_node_group
 
+      # ── 10. Terraform Apply — 2/3: ALB Controller + Karpenter IAM + Helm ───
+      # Segunda etapa: instala os controladores que dependem do cluster existir.
+      #
+      # Por que -target em cada recurso do Karpenter?
+      # O módulo do Karpenter tem recursos que dependem de outputs do cluster
+      # (OIDC provider ARN, cluster endpoint). Se rodarmos terraform apply sem
+      # -target, o Terraform tenta resolver todas as dependências de uma vez
+      # e pode falhar porque o cluster ainda não estava pronto no plan anterior.
+      # Separar em -target garante a ordem de criação correta.
       - name: "Terraform Apply — 2/3 ALB Controller + Karpenter IAM + Helm"
         if: steps.read-destroy-config.outputs.destroy != 'true'
         run: |
@@ -95,22 +211,4 @@ jobs:
             -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_worker \
             -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_ecr \
             -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_cni \
-            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_ssm \
-            -target=module.eks_karpenter.aws_eks_access_entry.karpenter_node \
-            -target=module.eks_karpenter.aws_sqs_queue.karpenter_interruption \
-            -target=module.eks_karpenter.aws_sqs_queue_policy.karpenter_interruption \
-            -target=module.eks_karpenter.aws_cloudwatch_event_rule.spot_interruption \
-            -target=module.eks_karpenter.aws_cloudwatch_event_target.spot_interruption \
-            -target=module.eks_karpenter.aws_cloudwatch_event_rule.instance_rebalance \
-            -target=module.eks_karpenter.aws_cloudwatch_event_target.instance_rebalance \
-            -target=module.eks_karpenter.aws_cloudwatch_event_rule.instance_state_change \
-            -target=module.eks_karpenter.aws_cloudwatch_event_target.instance_state_change \
-            -target=module.eks_karpenter.helm_release.karpenter
-
-      - name: "Terraform Apply — 3/3 Karpenter NodePool + EC2NodeClass"
-        if: steps.read-destroy-config.outputs.destroy != 'true'
-        run: |
-          cd iac_eks
-          echo ">> Aguardando CRDs do Karpenter propagarem..."
-          sleep 30
-          terraform apply -auto-approve
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter
