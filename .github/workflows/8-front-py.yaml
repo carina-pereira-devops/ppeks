@@ -17,13 +17,6 @@
 name: 8 - Deploy do Frontend em Python
 
 on:
-  # Execução automática quando a tag da imagem é atualizada no values.yaml
-  push:
-    branches:
-      - main
-    paths:
-      - 'charts/front-py/**'    # Qualquer mudança no chart dispara o deploy
-  # Execução manual via GitHub Actions UI
   workflow_dispatch:
 
 permissions:
