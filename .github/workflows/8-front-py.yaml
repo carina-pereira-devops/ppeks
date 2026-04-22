@@ -1,0 +1,114 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Workflow 8 — Deploy do Frontend (front-py) via Helm
+#
+# QUANDO EXECUTA:
+#   - Manual (workflow_dispatch): você clica "Run workflow" no GitHub
+#   - Automático: quando o workflow 3-img-front-py.yaml atualiza a tag no
+#     charts/front-py/values.yaml e faz commit na main
+#
+# PRÉ-REQUISITOS (devem estar prontos antes de rodar este workflow):
+#   1. Cluster EKS rodando (workflow 1-infra-eks.yaml executado)
+#   2. RDS PostgreSQL rodando (workflow 4-infra-rds.yaml executado)
+#   3. Backend Java deployado (workflow 6-back-java.yaml executado)
+#   4. Istio instalado (workflow 7-istio.yaml executado) ← OBRIGATÓRIO
+#      O namespace appfront precisa ter a label istio-injection=enabled
+#      para o sidecar Envoy ser injetado automaticamente no Pod do frontend.
+# ─────────────────────────────────────────────────────────────────────────────
+name: 8 - Deploy do Frontend em Python
+
+on:
+  # Execução automática quando a tag da imagem é atualizada no values.yaml
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/front-py/**'    # Qualquer mudança no chart dispara o deploy
+  # Execução manual via GitHub Actions UI
+  workflow_dispatch:
+
+permissions:
+  id-token: write    # Necessário para autenticação OIDC com a AWS (sem chaves estáticas)
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Autenticação AWS via OIDC ───────────────────────────────────────
+      # Sem chaves de acesso estáticas — usa a role IAM via OIDC.
+      # A role já tem permissão para: eks:DescribeCluster, ecr:GetAuthorizationToken
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::749000351410:role/github-carina-devops-pipe
+          aws-region: us-east-1
+
+      # ── 3. Atualizar kubeconfig ────────────────────────────────────────────
+      # Configura o kubectl para apontar para o cluster ppeks-cluster.
+      # Sem isso, helm e kubectl não sabem para qual cluster executar.
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ppeks-cluster --region us-east-1
+
+      # ── 4. Criar namespace appfront (se não existir) ───────────────────────
+      # O --dry-run=client -o yaml | kubectl apply -f - é o padrão idempotente:
+      # não falha se o namespace já existir.
+      - name: Create namespace appfront
+        run: |
+          kubectl create namespace appfront --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Garantir que a label de injeção do Istio está no namespace.
+          # Sem isso, o sidecar Envoy NÃO é injetado nos Pods.
+          # O workflow 7-istio.yaml também faz isso, mas deixamos aqui como garantia.
+          kubectl label namespace appfront istio-injection=enabled --overwrite
+
+      # ── 5. Deploy via Helm ─────────────────────────────────────────────────
+      # helm upgrade --install: atualiza se já existe, instala se não existe.
+      # É o comando idempotente padrão em pipelines.
+      #
+      # --namespace appfront: onde os recursos Kubernetes serão criados
+      # --wait: aguarda todos os Pods ficarem Ready antes de considerar sucesso
+      # --timeout 5m: se em 5 minutos não estiver pronto, falha a pipeline
+      #
+      # Por que não usar --set aqui?
+      # Todos os valores já estão no values.yaml, incluindo a BACKEND_URL.
+      # O --set é útil para valores dinâmicos (como o host do RDS que vem do
+      # Terraform output). Como o backend_url é estático (DNS interno do K8s),
+      # ele vive no values.yaml.
+      - name: Deploy front-py via Helm
+        run: |
+          helm upgrade --install front-py ./charts/front-py \
+            --namespace appfront \
+            --wait \
+            --timeout 5m
+
+      # ── 6. Validação pós-deploy ────────────────────────────────────────────
+      # Confirma que os Pods subiram corretamente e mostra o status final.
+      # Note: com Istio ativo, o Pod terá 2 containers: front-py + istio-proxy (sidecar)
+      # O READY vai aparecer como "2/2" quando ambos estiverem prontos.
+      - name: Validar deploy
+        run: |
+          echo "=== Pods no namespace appfront ==="
+          kubectl get pods -n appfront
+          
+          echo ""
+          echo "=== Service front-py ==="
+          kubectl get svc -n appfront
+          
+          echo ""
+          echo "=== Detalhes do Deployment ==="
+          kubectl rollout status deployment/front-py -n appfront
+          
+          echo ""
+          echo "=== Variáveis de ambiente no Pod (validar BACKEND_URL) ==="
+          POD=$(kubectl get pod -n appfront -l app=front-py -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n appfront $POD -c front-py -- env | grep -E "BACKEND_URL|OTEL"

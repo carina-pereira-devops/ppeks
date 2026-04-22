@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# values.yaml — front-py
+# Todos os valores parametrizáveis do chart ficam aqui.
+# O deployment.yaml e service.yaml referenciam esses valores via .Values.*
+# A pipeline (workflow 8-front-py.yaml) atualiza o campo "tag" automaticamente
+# via: sed -i 's/tag:.*/tag: <nova_tag>/' charts/front-py/values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+image:
+  # Repositório ECR onde a imagem está armazenada.
+  # Formato: <account_id>.dkr.ecr.<region>.amazonaws.com/<repo>
+  repository: 749000351410.dkr.ecr.us-east-1.amazonaws.com/frontpy
+  # Tag atualizada automaticamente pela pipeline de build (3-img-front-py.yaml)
+  tag: "20251123214408"
+  # IfNotPresent: só faz pull se a imagem ainda não existir no node.
+  # Evita pulls desnecessários quando a tag não muda.
+  pullPolicy: IfNotPresent
+
+service:
+  # ClusterIP: o Service só é acessível dentro do cluster.
+  # QUEM acessa de fora é o Istio Ingress Gateway — não este Service diretamente.
+  # Isso é intencional: nenhuma porta fica exposta publicamente via este recurso.
+  type: ClusterIP
+  # Porta que o Service expõe internamente no cluster.
+  # O Istio VirtualService vai rotear para front-py:5000
+  port: 5000
+  # Porta onde o container Flask realmente escuta (app.run(port=5000)).
+  # Deve bater com containerPort no deployment.yaml E com o EXPOSE 5000 do Dockerfile.
+  targetPort: 5000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BACKEND_URL: endereço do backend Java visto de DENTRO do cluster Kubernetes.
+#
+# Como funciona o DNS interno do Kubernetes (CoreDNS):
+#   http://<nome-do-service>.<namespace>.svc.cluster.local:<porta>
+#
+# O Service do backend se chama "java-back" (definido em charts/java-back/templates/service.yaml)
+# Ele está no namespace "appback" (definido no workflow 6-back-java.yaml)
+# Ele expõe a porta 80 (que internamente vai para o containerPort 8080)
+#
+# Portanto: http://java-back.appback.svc.cluster.local/todos
+#
+# IMPORTANTE: essa URL só funciona dentro do cluster. O Flask a usa para
+# chamar o backend em requests.get(BACKEND_URL) / requests.post(...) / requests.delete(...)
+# ─────────────────────────────────────────────────────────────────────────────
+env:
+  BACKEND_URL: "http://java-back.appback.svc.cluster.local/todos"
+
+  # Configurações do OpenTelemetry para envio de traces/métricas/logs.
+  # O collector (otel-collector) será instalado na fase de Observabilidade.
+  # Por enquanto apontamos para o namespace istio-system onde ele ficará.
+  # Deixamos configurado para não precisar rebuildar a imagem depois.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.istio-system.svc.cluster.local:4317"
+  OTEL_SERVICE_NAME: "todoui-flask"
+  OTEL_LOGS_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_TRACES_EXPORTER: "otlp"

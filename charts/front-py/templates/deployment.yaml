@@ -1,0 +1,99 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# deployment.yaml — front-py
+#
+# O Deployment é o recurso que garante que N réplicas do Pod Flask estejam
+# sempre rodando. Se um Pod morrer, o Deployment cria outro automaticamente.
+#
+# Fluxo de referência de valores:
+#   values.yaml → deployment.yaml (via .Values.*) → Pod criado no cluster
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: front-py
+  # O namespace é definido no momento do helm install/upgrade via --namespace
+  # Não hardcodamos aqui para manter o chart reutilizável
+  labels:
+    app: front-py
+    # Essa label será usada pelo Istio para identificar o serviço na malha
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    # O Deployment usa esse selector para saber quais Pods ele gerencia.
+    # DEVE bater exatamente com template.metadata.labels abaixo.
+    matchLabels:
+      app: front-py
+  template:
+    metadata:
+      labels:
+        app: front-py
+        version: v1
+        # Essa annotation instrui o Istio a INJETAR o sidecar Envoy neste Pod.
+        # Funciona apenas se o namespace tiver a label: istio-injection=enabled
+        # (que será aplicada pelo workflow 7-istio.yaml)
+    spec:
+      containers:
+        - name: front-py
+          # A imagem vem do ECR. A tag é atualizada pela pipeline de build.
+          # Formato: 749000351410.dkr.ecr.us-east-1.amazonaws.com/frontpy:20251123214408
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              # Porta onde o Flask escuta dentro do container.
+              # Deve bater com: EXPOSE 5000 no Dockerfile e app.run(port=5000) no app.py
+              containerPort: 5000
+              protocol: TCP
+          env:
+            # BACKEND_URL: diz ao Flask onde está o backend Java.
+            # Valor vem do values.yaml: http://java-back.appback.svc.cluster.local/todos
+            # O app.py lê via: os.getenv('BACKEND_URL', 'http://localhost:8080/todos')
+            - name: BACKEND_URL
+              value: {{ .Values.env.BACKEND_URL | quote }}
+
+            # Variáveis do OpenTelemetry — permitem ao container Flask enviar
+            # traces e métricas sem alterar o código da aplicação.
+            # O Dockerfile já usa: CMD ["opentelemetry-instrument", "python", "app.py"]
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.env.OTEL_EXPORTER_OTLP_ENDPOINT | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.env.OTEL_SERVICE_NAME | quote }}
+            - name: OTEL_LOGS_EXPORTER
+              value: {{ .Values.env.OTEL_LOGS_EXPORTER | quote }}
+            - name: OTEL_METRICS_EXPORTER
+              value: {{ .Values.env.OTEL_METRICS_EXPORTER | quote }}
+            - name: OTEL_TRACES_EXPORTER
+              value: {{ .Values.env.OTEL_TRACES_EXPORTER | quote }}
+
+          # ── Probes de saúde ──────────────────────────────────────────────
+          # livenessProbe: se falhar, o Kubernetes mata e recria o Pod.
+          # readinessProbe: se falhar, o Pod é removido do pool de tráfego
+          #                 (o Service para de enviar requisições para ele).
+          # O path "/" é a rota raiz do Flask — retorna 200 quando está saudável.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 15  # Aguarda 15s antes da primeira checagem (Flask precisa inicializar)
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # ── Recursos ─────────────────────────────────────────────────────
+          # requests: o que o Karpenter usa para decidir em qual node colocar o Pod.
+          # limits: teto máximo — se ultrapassar, o container é reiniciado (OOMKilled).
+          # Valores conservadores para o lab — ajustar conforme métricas reais.
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"    # 100 millicores = 10% de 1 vCPU
+            limits:
+              memory: "256Mi"
+              cpu: "250m"

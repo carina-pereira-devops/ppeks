@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# virtualservice.yaml
+#
+# O VirtualService define as REGRAS DE ROTEAMENTO dentro da malha.
+# Ele responde a pergunta: "tráfego que chegou pelo Gateway, para onde vai?"
+#
+# É aqui que mora a inteligência de roteamento que antes ficaria no Ingress.
+# Com Istio, o Ingress K8s é simplificado (só aponta para o IngressGateway)
+# e toda a lógica de roteamento fica no VirtualService.
+#
+# Regras definidas:
+#   GET /todos   → java-back.appback  (backend Java)
+#   POST /todos  → java-back.appback  (backend Java)
+#   DELETE /todos → java-back.appback (backend Java)
+#   /            → front-py.appfront  (frontend Flask)
+#
+# IMPORTANTE: a ordem dos match importa! Rotas mais específicas primeiro.
+# Se colocarmos "/" antes de "/todos", o "/" vai capturar tudo.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ppeks-vs
+  namespace: istio-system
+spec:
+  # hosts: para qual host se aplicam estas regras.
+  # Deve bater com o Gateway acima ("*").
+  hosts:
+    - "*"
+  # gateways: a qual Gateway este VirtualService está vinculado.
+  # Sem isso, as regras não têm efeito para tráfego externo.
+  gateways:
+    - ppeks-gateway
+  http:
+    # ── Rota 1: /todos/* → backend Java ─────────────────────────────────────
+    # Qualquer requisição cujo path começa com /todos vai para o java-back.
+    # O frontend Flask faz: requests.get(BACKEND_URL) onde BACKEND_URL = .../todos
+    # Mas o Istio também precisa rotear as chamadas vindas de FORA (ex: curl /todos)
+    - match:
+        - uri:
+            prefix: "/todos"
+      route:
+        - destination:
+            # host: nome do Service Kubernetes no formato <service>.<namespace>
+            # O Istio resolve via CoreDNS dentro do cluster.
+            host: java-back.appback.svc.cluster.local
+            port:
+              number: 80   # Porta do Service java-back (que vai para targetPort 8080)
+      # Timeout para chamadas ao backend — evita o frontend ficar pendurado
+      timeout: 10s
+      # Retry automático: se o backend retornar 5xx, tenta mais 2 vezes.
+      # Isso é o "circuit breaker lite" — sem alterar uma linha do código da app.
+      retries:
+        attempts: 2
+        perTryTimeout: 5s
+        retryOn: gateway-error,connect-failure,retriable-4xx
+
+    # ── Rota 2: / → frontend Flask ───────────────────────────────────────────
+    # Tudo que não é /todos vai para o front-py.
+    # Ordem importa: essa rota é mais genérica, então fica por último.
+    - match:
+        - uri:
+            prefix: "/"
+      route:
+        - destination:
+            host: front-py.appfront.svc.cluster.local
+            port:
+              number: 5000   # Porta do Service front-py
+      timeout: 10s

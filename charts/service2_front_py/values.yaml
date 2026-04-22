@@ -1,9 +1,0 @@
-image:
-  repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/front_py"
-  tag: "20251123214408" # Dica do Fabiano na primeira entrevista
-  pullPolicy: IfNotPresent
-
-service: # Melhor estratégia para expor o serviço? Certificação AWS...
-  type: ClusterIP
-  port: 5002
-  targetPort: 5002

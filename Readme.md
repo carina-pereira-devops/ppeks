@@ -77,6 +77,20 @@ https://opentelemetry.io/ecosystem/demo/
 
 A construção será feita de forma didática e intuitiva, bem detalhada através desta documentação.
 
+# Aplicação
+
+Como o frontend fala com o backend
+Dentro do cluster Kubernetes, serviços se descobrem pelo DNS interno (gerenciado pelo CoreDNS). O formato é:
+
+```
+http://<nome-do-service>.<namespace>.svc.cluster.local:<porta>
+```
+O Service do backend se chama java-back, está no namespace appback e o ALB acessa na porta 80 que aponta para 8080. Mas comunicação interna (Pod → Pod) usa diretamente o ClusterIP. Então o frontend precisa de:
+
+```
+BACKEND_URL = http://java-back.appback.svc.cluster.local/todos
+```
+
 # Topologia da AWS
 
 No laboratório anterior, foi sugerido o uso do Traefik, no qual este deploy do Kubernetes faria a gerencia das rotas (conceitos de CKA). Como queremos explorar mais os recursos da AWS (atualmente estudando para AWS Certified Solutions Architect Associate), para este Laboratório vamos utilizar o AWS ALB Ingress Controller, expondo aplicações.
@@ -86,6 +100,32 @@ De fato o deploy é feito pelo Helm, que é um gerenciador de pacotes do Kuberne
 Também no laboratório anterior, no destroy da infra, a pipeline quebrava por conta que o ALB estava com aplicações criadas no EKS, o que não permitia a destruição do cluster. Então com a instalação/desinstalação do ALB Ingress Controller via pipeline do GitHub Actions, a infra fica totalmente apartada do deploy permitindo flexibilidade.
 
 Também temos granularidade em qualquer alteração da pasta "iac_eks" podendo ser executada através de uma pipeline específica para a infra.
+
+Topologia sugeria via ALB e posteriormente com a implementação do Istio.
+Porém, vamos entender:
+
+![LB](prints/image12.png)
+
+![TRAFEGO](prints/image13.png)
+
+Por que NÃO usar só o ALB sem Istio?
+
+O ALB é ótimo para entrada, mas ele não enxerga o que acontece dentro do cluster. 
+Ele não sabe se o Pod Flask está chamando o backend com retry, sem timeout, sem criptografia. Ele não consegue fazer canary entre versões do backend. 
+Ele não coleta spans de tracing entre serviços.
+
+O Istio, via sidecar (um container Envoy que é injetado automaticamente em cada Pod), intercepta toda comunicação interna e oferece:
+
+mTLS automático entre todos os Pods (zero-trust)
+
+Retries e timeouts sem mudar o código da aplicação
+
+Circuit breaker (se o backend travar, o frontend recebe um erro limpo)
+
+Canary/Blue-Green por peso de tráfego
+
+Telemetria rica — base para o Kiali + Jaeger que você quer usar
+
 
 # Cluster EKS
 
@@ -449,6 +489,4 @@ https://landscape.cncf.io/
 
 ![alt text](prints/image6.png)
 
-
 ---
-

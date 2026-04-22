@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# gateway.yaml
+#
+# O Gateway define o PONTO DE ENTRADA na malha do Istio.
+# Ele fica no Istio Ingress Gateway Pod e escuta conexões externas.
+#
+# Analogia: se o Istio fosse um condomínio, o Gateway seria a portaria.
+# Ele define: "aceito tráfego HTTP na porta 80 para qualquer host".
+#
+# O Gateway em si NÃO sabe para onde rotear — isso é responsabilidade
+# do VirtualService. O Gateway apenas abre a "porta de entrada".
+#
+# Relação com o ALB:
+#   ALB (AWS) → Ingress K8s → Istio Ingress Gateway Pod (porta 80) → Gateway CRD
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: ppeks-gateway
+  # Fica em istio-system para ficar próximo ao IngressGateway Pod
+  namespace: istio-system
+spec:
+  # selector: aponta para o Pod do Istio Ingress Gateway.
+  # O label "istio: ingressgateway" é o padrão do chart istio/gateway.
+  # É assim que o Istio sabe em qual Pod aplicar esta configuração.
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      # hosts: quais domínios este gateway aceita.
+      # "*" significa qualquer host — ideal para lab onde usamos o DNS do ALB.
+      # Em produção: substituir por "meuapp.meudominio.com"
+      hosts:
+        - "*"

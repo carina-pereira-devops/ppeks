@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# service.yaml — front-py
+#
+# O Service é a "porta de entrada" estável para os Pods do Deployment.
+# Pods têm IPs que mudam quando são recriados. O Service tem um IP fixo
+# (ClusterIP) e um nome DNS permanente no CoreDNS:
+#   front-py.appfront.svc.cluster.local
+#
+# O Istio VirtualService vai referenciar este Service para rotear o tráfego
+# que vem do Ingress Gateway para os Pods do frontend.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: front-py
+  labels:
+    app: front-py
+spec:
+  # ClusterIP: acessível apenas dentro do cluster.
+  # O Istio Ingress Gateway está dentro do cluster, então ele consegue acessar.
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http        # Nome obrigatório para o Istio reconhecer o protocolo
+      port: {{ .Values.service.port }}           # 5000 — porta do Service no cluster
+      targetPort: {{ .Values.service.targetPort }} # 5000 — porta do container Flask
+      protocol: TCP
+  # O selector conecta este Service aos Pods que têm a label app=front-py.
+  # É assim que o Kubernetes sabe para quais Pods rotear o tráfego.
+  selector:
+    app: front-py

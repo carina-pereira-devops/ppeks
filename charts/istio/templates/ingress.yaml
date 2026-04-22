@@ -1,0 +1,79 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ingress.yaml
+#
+# Este Ingress é O ELO entre o mundo AWS e o mundo Istio.
+#
+# Quando o ALB Controller vê este recurso, ele:
+#   1. Provisiona um Application Load Balancer na AWS (subnets públicas)
+#   2. Cria um Target Group apontando para os nodes do cluster
+#   3. Configura listener na porta 80 → forward para o Target Group
+#   4. O Target Group aponta para a porta NodePort do Istio Ingress Gateway Service
+#
+# Fluxo completo após este Ingress ser aplicado:
+#   Navegador → ALB (AWS) → NodePort do Istio Ingress Gateway
+#            → Gateway CRD → VirtualService → Service do front-py ou java-back
+#            → Pod com sidecar Envoy → container da aplicação
+#
+# Por que o backend é "ip" e o alvo é o Istio e não os serviços diretamente?
+#   Porque o Istio Ingress Gateway é o ÚNICO ponto de entrada na malha.
+#   Se o ALB apontasse direto para os Pods das aplicações, o tráfego
+#   entraria NO Pod mas passaria pelo sidecar sem ter passado pelo Gateway,
+#   o que quebraria as políticas de segurança e o controle de tráfego do Istio.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ppeks-ingress
+  # Fica em istio-system porque aponta para o IngressGateway que está lá
+  namespace: istio-system
+  annotations:
+    # ── Annotations obrigatórias do ALB Controller ───────────────────────────
+
+    # Tipo: internet-facing = ALB com IP público (acessível da internet)
+    # Se fosse "internal", o ALB teria IP privado (só acessível dentro da VPC)
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    # ip mode: o ALB manda tráfego direto para o IP do Pod do IngressGateway.
+    # Alternativa seria "instance" (NodePort), mas "ip" é mais eficiente:
+    # menos um salto de rede e mais preciso no roteamento.
+    alb.ingress.kubernetes.io/target-type: ip
+
+    # IngressClass: diz ao ALB Controller que ESTE ingress é dele para gerenciar.
+    # Sem isso, o ALB Controller ignora o recurso.
+    kubernetes.io/ingress.class: alb
+
+    # Porta do ALB que aceita tráfego externo
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+
+    # Health check: o ALB verifica se o Istio Ingress Gateway está saudável
+    # batendo nessa rota. O Envoy responde 200 em /healthz/ready.
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz/ready
+    alb.ingress.kubernetes.io/healthcheck-port: "15021"
+
+    # Subnets públicas: o ALB precisa ficar nas subnets públicas para ser
+    # acessível da internet. A tag kubernetes.io/role/elb=1 é o que o
+    # ALB Controller usa para descobrir quais subnets usar automaticamente.
+    # (Essa tag já deve estar nas suas subnets públicas — foi configurada
+    # no módulo network do Terraform)
+    alb.ingress.kubernetes.io/subnets-auto-discovery: "true"
+
+spec:
+  # ingressClassName: complementa a annotation acima para K8s >= 1.18
+  ingressClassName: alb
+  rules:
+    # host vazio ("") = aceita qualquer domínio (usa o DNS do ALB diretamente)
+    # Em produção: colocar o domínio real aqui e configurar Route53
+    - http:
+        paths:
+          # Rota única: TODO o tráfego vai para o Istio Ingress Gateway.
+          # O roteamento fino (/ vs /todos) é responsabilidade do VirtualService.
+          # O Ingress só precisa saber: "tudo que chegar, manda para o Istio".
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # Nome do Service do Istio Ingress Gateway
+                # (criado pelo chart istio/gateway com o nome padrão)
+                name: istio-ingressgateway
+                port:
+                  number: 80

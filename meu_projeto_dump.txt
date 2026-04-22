@@ -1,5 +1,5 @@
 =================================================================
-  PROJECT DUMP — ter 21 abr 2026 14:29:06 -03
+  PROJECT DUMP — ter 21 abr 2026 20:04:15 -03
   Diretório: /home/carina/Downloads/_projetos/pp_eks
 =================================================================
 
@@ -7,13 +7,13 @@
 ```
 .
 ├── charts
-│   ├── java-back
+│   ├── front-py
 │   │   ├── Chart.yaml
 │   │   ├── templates
 │   │   │   ├── deployment.yaml
 │   │   │   └── service.yaml
 │   │   └── values.yaml
-│   └── service2_front_py
+│   └── java-back
 │       ├── Chart.yaml
 │       ├── templates
 │       │   ├── deployment.yaml
@@ -45,6 +45,13 @@
 │   │   │   ├── oidc.tf
 │   │   │   ├── outputs.tf
 │   │   │   ├── sg-rule.tf
+│   │   │   └── variables.tf
+│   │   ├── karpenter
+│   │   │   ├── helm.tf
+│   │   │   ├── iam.tf
+│   │   │   ├── interruption.tf
+│   │   │   ├── node-pool.tf
+│   │   │   ├── outputs.tf
 │   │   │   └── variables.tf
 │   │   ├── managed-node-group
 │   │   │   ├── eks.tf
@@ -113,6 +120,78 @@
 ```
 
 ## CONTEÚDO DOS ARQUIVOS
+
+---
+### charts/front-py/Chart.yaml
+```yaml
+apiVersion: v2
+name: front-py
+description: Helm para front-py
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+```
+
+---
+### charts/front-py/templates/deployment.yaml
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: front-py
+  labels:
+    app: front-py
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: front-py
+  template:
+    metadata:
+      labels:
+        app: front-py
+    spec:
+      containers:
+        - name: front-py
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}" # Valor a ser substituido no values
+          imagePullPolicy: {{ .Values.image.pullPolicy }} # Valor a ser substituido no values
+          ports:
+            - containerPort: 5001
+
+```
+
+---
+### charts/front-py/templates/service.yaml
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: front-py
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }} # Valores a serem substituidos no values
+  selector:
+    app: front-py
+
+```
+
+---
+### charts/front-py/values.yaml
+```yaml
+image:
+  repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/front_py"
+  tag: "20251123214408" # Dica do Fabiano na primeira entrevista
+  pullPolicy: IfNotPresent
+
+service: # Melhor estratégia para expor o serviço? Certificação AWS...
+  type: ClusterIP
+  port: 5002
+  targetPort: 5002
+
+```
 
 ---
 ### charts/java-back/Chart.yaml
@@ -203,78 +282,6 @@ service: # Melhor estratégia para expor o serviço? Certificação AWS...
 env:
   POSTGRES_HOST: ""
   POSTGRES_DB: ""
-
-```
-
----
-### charts/service2_front_py/Chart.yaml
-```yaml
-apiVersion: v2
-name: service2
-description: Helm para service2
-type: application
-version: 0.1.0
-appVersion: "1.0.0"
-
-```
-
----
-### charts/service2_front_py/templates/deployment.yaml
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: service2
-  labels:
-    app: service2
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: service2
-  template:
-    metadata:
-      labels:
-        app: service2
-    spec:
-      containers:
-        - name: service2
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}" # Valor a ser substituido no values
-          imagePullPolicy: {{ .Values.image.pullPolicy }} # Valor a ser substituido no values
-          ports:
-            - containerPort: 5001
-
-```
-
----
-### charts/service2_front_py/templates/service.yaml
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: service2
-spec:
-  type: {{ .Values.service.type }}
-  ports:
-    - port: {{ .Values.service.port }}
-      targetPort: {{ .Values.service.targetPort }} # Valores a serem substituidos no values
-  selector:
-    app: service2
-
-```
-
----
-### charts/service2_front_py/values.yaml
-```yaml
-image:
-  repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/front_py"
-  tag: "20251123214408" # Dica do Fabiano na primeira entrevista
-  pullPolicy: IfNotPresent
-
-service: # Melhor estratégia para expor o serviço? Certificação AWS...
-  type: ClusterIP
-  port: 5002
-  targetPort: 5002
 
 ```
 
@@ -1432,7 +1439,6 @@ if [ -z "$CLUSTERS" ]; then
 else
   for C in $CLUSTERS; do
     echo -e "$FOUND Cluster: $C"
-    # Node groups
     NGS=$(aws eks list-nodegroups --cluster-name $C --region $REGION --query 'nodegroups' --output text 2>/dev/null)
     for NG in $NGS; do
       echo -e "   $FOUND  NodeGroup: $NG"
@@ -1479,6 +1485,55 @@ fi
 echo ""
 
 # --------------------------------------------------------------
+# RDS Snapshots (manuais e automáticos)
+# --------------------------------------------------------------
+echo "### RDS Snapshots"
+
+# Snapshots manuais
+SNAPS_MANUAL=$(aws rds describe-db-snapshots \
+  --region $REGION \
+  --snapshot-type manual \
+  --query 'DBSnapshots[*].[DBSnapshotIdentifier,DBInstanceIdentifier,SnapshotCreateTime,AllocatedStorage,Status]' \
+  --output text 2>/dev/null)
+if [ -z "$SNAPS_MANUAL" ]; then
+  echo -e "$OK Nenhum snapshot manual de RDS"
+else
+  echo -e "$FOUND Snapshots MANUAIS encontrados (cobram armazenamento!):"
+  echo "$SNAPS_MANUAL" | while read SNAP_ID DB_ID CREATED STORAGE STATUS; do
+    echo -e "   $FOUND $SNAP_ID | DB: $DB_ID | $STORAGE GB | $STATUS | criado: $CREATED"
+  done
+fi
+
+# Snapshots automáticos (gerados pelo destroy do Terraform com skip_final_snapshot=false)
+SNAPS_AUTO=$(aws rds describe-db-snapshots \
+  --region $REGION \
+  --snapshot-type automated \
+  --query 'DBSnapshots[*].[DBSnapshotIdentifier,DBInstanceIdentifier,SnapshotCreateTime,AllocatedStorage,Status]' \
+  --output text 2>/dev/null)
+if [ -z "$SNAPS_AUTO" ]; then
+  echo -e "$OK Nenhum snapshot automático de RDS"
+else
+  echo -e "$WARN Snapshots AUTOMÁTICOS encontrados (gratuitos dentro do free tier, mas verifique):"
+  echo "$SNAPS_AUTO" | while read SNAP_ID DB_ID CREATED STORAGE STATUS; do
+    echo -e "   $WARN $SNAP_ID | DB: $DB_ID | $STORAGE GB | $STATUS | criado: $CREATED"
+  done
+fi
+
+# Snapshots gerados no final do destroy (final snapshots)
+SNAPS_FINAL=$(aws rds describe-db-snapshots \
+  --region $REGION \
+  --query "DBSnapshots[?contains(DBSnapshotIdentifier, 'final') || contains(DBSnapshotIdentifier, '$PROJECT')].[DBSnapshotIdentifier,DBInstanceIdentifier,SnapshotCreateTime,AllocatedStorage,Status]" \
+  --output text 2>/dev/null)
+if [ ! -z "$SNAPS_FINAL" ]; then
+  echo -e "$FOUND Snapshots com 'final' ou '$PROJECT' no nome (provavelmente gerados pelo destroy):"
+  echo "$SNAPS_FINAL" | while read SNAP_ID DB_ID CREATED STORAGE STATUS; do
+    echo -e "   $FOUND $SNAP_ID | DB: $DB_ID | $STORAGE GB | $STATUS | criado: $CREATED"
+    echo -e "         Para deletar: aws rds delete-db-snapshot --db-snapshot-identifier $SNAP_ID --region $REGION"
+  done
+fi
+echo ""
+
+# --------------------------------------------------------------
 # NAT Gateways (cobram por hora mesmo sem tráfego!)
 # --------------------------------------------------------------
 echo "### NAT Gateways"
@@ -1498,7 +1553,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------
-# Elastic IPs não associados (cobram quando não estão em uso)
+# Elastic IPs não associados
 # --------------------------------------------------------------
 echo "### Elastic IPs não associados"
 EIPS=$(aws ec2 describe-addresses \
@@ -1589,7 +1644,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------
-# S3 Buckets (tfstate)
+# S3 Buckets
 # --------------------------------------------------------------
 echo "### S3 Buckets"
 BUCKETS=$(aws s3api list-buckets \
@@ -1658,6 +1713,10 @@ echo "  3. EC2 / Node Groups  → depende do tipo (t3.micro = ~\$0.01/hora)"
 echo "  4. RDS                → db.t3.micro = ~\$0.02/hora"
 echo "  5. Load Balancer ALB  → ~\$0.008/hora + dados"
 echo "  6. Elastic IPs soltos → ~\$0.005/hora quando não associados"
+echo "  7. RDS Snapshots      → \$0.095/GB-mês acima do free tier"
+echo ""
+echo "  Para deletar um snapshot manualmente:"
+echo "  aws rds delete-db-snapshot --db-snapshot-identifier <ID> --region $REGION"
 echo -e "$SEP\n"
 
 
@@ -1913,18 +1972,11 @@ jobs:
           echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
 
       - name: Terraform Init
-        run: |
-          cd iac_eks && terraform init
+        run: cd iac_eks && terraform init
 
       - name: Terraform Validate
-        run: terraform validate
+        run: cd iac_eks && terraform validate
 
-      # -------------------------------------------------------
-      # Limpeza de recursos Kubernetes ANTES do destroy
-      # Necessário porque o ALB Controller cria ALBs e ENIs
-      # fora do Terraform — se não forem deletados antes,
-      # a VPC fica bloqueada e o destroy trava por 20+ minutos
-      # -------------------------------------------------------
       - name: Limpar recursos Kubernetes antes do destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         run: |
@@ -1952,20 +2004,50 @@ jobs:
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
-        run: cd iac_eks &&
-          terraform destroy -auto-approve
+        run: cd iac_eks && terraform destroy -auto-approve
 
-      - name: Terraform Plan
+      - name: "Terraform Apply — 1/3 Rede + Cluster + MGN"
         if: steps.read-destroy-config.outputs.destroy != 'true'
-        id: terraform-plan
-        run: cd iac_eks &&
-          terraform plan -out="prd.plan"
+        run: |
+          cd iac_eks
+          terraform apply -auto-approve \
+            -target=module.eks_network \
+            -target=module.eks_cluster \
+            -target=module.eks_managed_node_group
 
-      - name: Terraform Apply
+      - name: "Terraform Apply — 2/3 ALB Controller + Karpenter IAM + Helm"
         if: steps.read-destroy-config.outputs.destroy != 'true'
-        id: terraform-apply
-        run: cd iac_eks &&
-          terraform apply -auto-approve  
+        run: |
+          cd iac_eks
+          terraform apply -auto-approve \
+            -target=module.eks_aws_load_balancer_controller \
+            -target=module.eks_karpenter.aws_iam_role.karpenter_controller \
+            -target=module.eks_karpenter.aws_iam_role.karpenter_node \
+            -target=module.eks_karpenter.aws_iam_instance_profile.karpenter_node \
+            -target=module.eks_karpenter.aws_iam_policy.karpenter_controller \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_controller \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_worker \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_ecr \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_cni \
+            -target=module.eks_karpenter.aws_iam_role_policy_attachment.karpenter_node_ssm \
+            -target=module.eks_karpenter.aws_eks_access_entry.karpenter_node \
+            -target=module.eks_karpenter.aws_sqs_queue.karpenter_interruption \
+            -target=module.eks_karpenter.aws_sqs_queue_policy.karpenter_interruption \
+            -target=module.eks_karpenter.aws_cloudwatch_event_rule.spot_interruption \
+            -target=module.eks_karpenter.aws_cloudwatch_event_target.spot_interruption \
+            -target=module.eks_karpenter.aws_cloudwatch_event_rule.instance_rebalance \
+            -target=module.eks_karpenter.aws_cloudwatch_event_target.instance_rebalance \
+            -target=module.eks_karpenter.aws_cloudwatch_event_rule.instance_state_change \
+            -target=module.eks_karpenter.aws_cloudwatch_event_target.instance_state_change \
+            -target=module.eks_karpenter.helm_release.karpenter
+
+      - name: "Terraform Apply — 3/3 Karpenter NodePool + EC2NodeClass"
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          cd iac_eks
+          echo ">> Aguardando CRDs do Karpenter propagarem..."
+          sleep 30
+          terraform apply -auto-approve
 ```
 
 ---
@@ -2355,7 +2437,7 @@ jobs:
 ### iac_eks/destroy_config.json
 ```json
 {
-    "boolean": false
+    "boolean": true
 }
 ```
 
@@ -2394,6 +2476,24 @@ module "eks_aws_load_balancer_controller" {
   oidc         = module.eks_cluster.oidc
   cluster_name = module.eks_cluster.cluster_name
   vpc_id       = module.eks_network.vpc_id
+
+  # Garante que os nodes existam antes de instalar o controller
+  depends_on = [module.eks_managed_node_group]
+}
+
+module "eks_karpenter" {
+  source           = "./modules/karpenter"
+  project_name     = var.project_name
+  tags             = var.tags
+  cluster_name     = module.eks_cluster.cluster_name
+  cluster_endpoint = module.eks_cluster.endpoint
+  oidc             = module.eks_cluster.oidc
+  subnet_private_1a = module.eks_network.subnet_priv_1a
+  subnet_private_1b = module.eks_network.subnet_priv_1b
+
+  # Karpenter só pode ser instalado depois que o MGN estiver pronto
+  # (precisa de nodes para o pod do controller subir)
+  depends_on = [module.eks_managed_node_group]
 }
 ```
 
@@ -2414,13 +2514,57 @@ resource "helm_release" "eks_helm_controller" {
   version    = "1.4.7"
   namespace  = "kube-system"
 
-    values = [yamlencode({
+  # Aguarda o pod estar Running antes de continuar o terraform
+  wait    = true
+  timeout = 600 # 10 min — nodes do MGN podem demorar para estar prontos
+
+  values = [yamlencode({
     clusterName = var.cluster_name
+
     serviceAccount = {
       create = false
       name   = "aws-load-balancer-controller"
     }
+
     vpcId = var.vpc_id
+
+    tolerations = [{
+      key      = "CriticalAddonsOnly"
+      operator = "Exists" # ← Exists, não Equal — é como o EKS usa
+    }]
+
+    affinity = {
+      nodeAffinity = {
+        requiredDuringSchedulingIgnoredDuringExecution = {
+          nodeSelectorTerms = [
+            {
+              matchExpressions = [
+                {
+                  key      = "CriticalAddonsOnly"
+                  operator = "Exists"
+                }
+              ]
+            }
+          ]
+        }
+      }
+      # Anti-affinity: distribui as 2 réplicas em nodes diferentes
+      podAntiAffinity = {
+        preferredDuringSchedulingIgnoredDuringExecution = [
+          {
+            weight = 100
+            podAffinityTerm = {
+              labelSelector = {
+                matchLabels = {
+                  "app.kubernetes.io/name" = "aws-load-balancer-controller"
+                }
+              }
+              topologyKey = "kubernetes.io/hostname"
+            }
+          }
+        ]
+      }
+    }
   })]
 }
 
@@ -2954,33 +3098,694 @@ variable "az_b" {
 ```
 
 ---
+### iac_eks/modules/karpenter/helm.tf
+```hcl
+# ============================================================
+# Helm — Deploy do Karpenter no cluster
+# Roda no MGN (nodes de sistema) — sem toleration de workload
+# ============================================================
+
+resource "helm_release" "karpenter" {
+  name       = "karpenter"
+  repository = "oci://public.ecr.aws/karpenter"
+  chart      = "karpenter"
+  version    = "1.3.3" # Compatível com EKS 1.35
+  namespace  = "kube-system"
+
+  # Aguarda o pod estar Running antes de continuar o terraform
+  wait    = true
+  timeout = 300
+
+  values = [
+    yamlencode({
+      # Service Account com IRSA
+      serviceAccount = {
+        create = true
+        name   = "karpenter"
+        annotations = {
+          "eks.amazonaws.com/role-arn" = aws_iam_role.karpenter_controller.arn
+        }
+      }
+
+      settings = {
+        clusterName       = var.cluster_name
+        clusterEndpoint   = var.cluster_endpoint
+        interruptionQueue = aws_sqs_queue.karpenter_interruption.name
+      }
+
+      tolerations = [{
+        key      = "CriticalAddonsOnly"
+        operator = "Exists" # ← Exists, não Equal — é como o EKS usa
+      }]
+
+      affinity = {
+        nodeAffinity = {
+          requiredDuringSchedulingIgnoredDuringExecution = {
+            nodeSelectorTerms = [
+              {
+                matchExpressions = [
+                  {
+                    key      = "CriticalAddonsOnly"
+                    operator = "Exists"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        # Anti-affinity: distribui os 2 pods do Karpenter em AZs diferentes
+        podAntiAffinity = {
+          preferredDuringSchedulingIgnoredDuringExecution = [
+            {
+              weight = 100
+              podAffinityTerm = {
+                labelSelector = {
+                  matchLabels = {
+                    "app.kubernetes.io/name" = "karpenter"
+                  }
+                }
+                topologyKey = "kubernetes.io/hostname"
+              }
+            }
+          ]
+        }
+      }
+
+      # 2 réplicas para HA (uma em cada node do MGN)
+      replicas = 2
+
+      controller = {
+        resources = {
+          requests = {
+            cpu    = "100m"
+            memory = "256Mi"
+          }
+          limits = {
+            cpu    = "500m"
+            memory = "512Mi"
+          }
+        }
+      }
+
+      logLevel = "info"
+    })
+  ]
+
+  depends_on = [
+    aws_iam_role_policy_attachment.karpenter_controller,
+    aws_eks_access_entry.karpenter_node
+  ]
+}
+
+```
+
+---
+### iac_eks/modules/karpenter/iam.tf
+```hcl
+# ============================================================
+# IAM — IRSA Role para o Karpenter Controller
+# ============================================================
+
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+locals {
+  oidc_id = replace(var.oidc, "https://", "")
+}
+
+# ---- IAM Role do Karpenter Controller (IRSA) ----
+resource "aws_iam_role" "karpenter_controller" {
+  name = "${var.project_name}-karpenter-controller"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${local.oidc_id}"
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "${local.oidc_id}:aud" = "sts.amazonaws.com"
+            "${local.oidc_id}:sub" = "system:serviceaccount:kube-system:karpenter"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(var.tags, { Name = "${var.project_name}-karpenter-controller" })
+}
+
+resource "aws_iam_policy" "karpenter_controller" {
+  name = "${var.project_name}-karpenter-controller"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+
+      # --------------------------------------------------------
+      # EKS — detectar CIDR do cluster e configurações de rede
+      # OBRIGATÓRIO no Karpenter v1.x — sem isso: "Failed to
+      # detect the cluster CIDR" e EC2NodeClass fica NotReady
+      # --------------------------------------------------------
+      {
+        Effect   = "Allow"
+        Action   = ["eks:DescribeCluster"]
+        Resource = "arn:aws:eks:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
+      },
+
+      # --------------------------------------------------------
+      # EC2 — criar e gerenciar instâncias (spot + on-demand)
+      # --------------------------------------------------------
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:RunInstances",
+          "ec2:CreateFleet",
+          "ec2:CreateLaunchTemplate",
+          "ec2:DeleteLaunchTemplate",
+          "ec2:TerminateInstances",
+          "ec2:CreateTags",
+          "ec2:DescribeImages",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeInstanceTypeOfferings",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeSpotPriceHistory",
+          "ec2:DescribeLaunchTemplates",
+          "ec2:DescribeVpcs"
+        ]
+        Resource = "*"
+      },
+
+      # --------------------------------------------------------
+      # EC2 — spot instance requests
+      # --------------------------------------------------------
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:RequestSpotInstances",
+          "ec2:CancelSpotInstanceRequests",
+          "ec2:DescribeSpotInstanceRequests"
+        ]
+        Resource = "*"
+      },
+
+      # --------------------------------------------------------
+      # IAM — passar a node role para as instâncias EC2
+      # --------------------------------------------------------
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = aws_iam_role.karpenter_node.arn
+      },
+
+      # --------------------------------------------------------
+      # IAM — gerenciar Instance Profile dos nodes
+      #
+      # ATENÇÃO: No Karpenter v1.x, quando o campo "role" é
+      # definido no EC2NodeClass, o Karpenter gerencia o ciclo
+      # de vida completo do Instance Profile internamente.
+      # O nome gerado é dinâmico (ex: ppeks-cluster_982766...)
+      # portanto o Resource precisa ser "*".
+      #
+      # O aws_iam_instance_profile criado no Terraform abaixo
+      # é mantido apenas como referência — o Karpenter cria
+      # e gerencia o seu próprio Instance Profile.
+      # --------------------------------------------------------
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:GetInstanceProfile",
+          "iam:CreateInstanceProfile",
+          "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:DeleteInstanceProfile",
+          "iam:TagInstanceProfile"
+        ]
+        Resource = "*"
+      },
+
+      # --------------------------------------------------------
+      # IAM — criar Service Linked Role para EC2 Spot
+      # A AWSServiceRoleForEC2Spot já existe na conta, mas o
+      # Karpenter tenta criá-la na inicialização e precisa da
+      # permissão — mesmo que a role já exista na conta.
+      # --------------------------------------------------------
+      {
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = "arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot"
+        Condition = {
+          StringLike = {
+            "iam:AWSServiceName" = "spot.amazonaws.com"
+          }
+        }
+      },
+
+      # --------------------------------------------------------
+      # Pricing — calcular custo para escolher melhor spot
+      # --------------------------------------------------------
+      {
+        Effect   = "Allow"
+        Action   = ["pricing:GetProducts"]
+        Resource = "*"
+      },
+
+      # --------------------------------------------------------
+      # SSM — buscar AMIs otimizadas para EKS
+      # --------------------------------------------------------
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = "arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*"
+      },
+
+      # --------------------------------------------------------
+      # SQS — fila de interrupção de spot
+      # --------------------------------------------------------
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl",
+          "sqs:ReceiveMessage"
+        ]
+        Resource = aws_sqs_queue.karpenter_interruption.arn
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "karpenter_controller" {
+  role       = aws_iam_role.karpenter_controller.name
+  policy_arn = aws_iam_policy.karpenter_controller.arn
+}
+
+# ---- IAM Role para os NODES criados pelo Karpenter ----
+resource "aws_iam_role" "karpenter_node" {
+  name = "${var.project_name}-karpenter-node"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "ec2.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = merge(var.tags, { Name = "${var.project_name}-karpenter-node" })
+}
+
+resource "aws_iam_role_policy_attachment" "karpenter_node_worker" {
+  role       = aws_iam_role.karpenter_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "karpenter_node_ecr" {
+  role       = aws_iam_role.karpenter_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_role_policy_attachment" "karpenter_node_cni" {
+  role       = aws_iam_role.karpenter_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "karpenter_node_ssm" {
+  role       = aws_iam_role.karpenter_node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Instance Profile — mantido no Terraform para referência e
+# para garantir que a role exista antes do Karpenter subir.
+# O Karpenter v1.x cria seu próprio Instance Profile com nome
+# dinâmico internamente — este não será usado por ele.
+resource "aws_iam_instance_profile" "karpenter_node" {
+  name = "${var.project_name}-karpenter-node"
+  role = aws_iam_role.karpenter_node.name
+  tags = var.tags
+}
+
+# Access Entry — permite que os nodes do Karpenter entrem no cluster
+resource "aws_eks_access_entry" "karpenter_node" {
+  cluster_name  = var.cluster_name
+  principal_arn = aws_iam_role.karpenter_node.arn
+  type          = "EC2_LINUX"
+}
+```
+
+---
+### iac_eks/modules/karpenter/interruption.tf
+```hcl
+# ============================================================
+# SQS + EventBridge — Spot Interruption Handling
+# Quando a AWS vai interromper um spot, envia aviso 2 min antes.
+# O Karpenter lê a fila e drena o node graciosamente.
+# ============================================================
+
+resource "aws_sqs_queue" "karpenter_interruption" {
+  name                      = "${var.project_name}-karpenter-interruption"
+  message_retention_seconds = 300 # 5 minutos — suficiente para o aviso de spot
+
+  tags = merge(var.tags, { Name = "${var.project_name}-karpenter-interruption" })
+}
+
+resource "aws_sqs_queue_policy" "karpenter_interruption" {
+  queue_url = aws_sqs_queue.karpenter_interruption.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = ["events.amazonaws.com", "sqs.amazonaws.com"] }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.karpenter_interruption.arn
+      }
+    ]
+  })
+}
+
+# Eventos que o Karpenter precisa monitorar para spot
+resource "aws_cloudwatch_event_rule" "spot_interruption" {
+  name        = "${var.project_name}-karpenter-spot-interruption"
+  description = "Aviso de interrupção de Spot Instance para o Karpenter"
+
+  event_pattern = jsonencode({
+    source      = ["aws.ec2"]
+    detail-type = ["EC2 Spot Instance Interruption Warning"]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "spot_interruption" {
+  rule      = aws_cloudwatch_event_rule.spot_interruption.name
+  target_id = "KarpenterInterruption"
+  arn       = aws_sqs_queue.karpenter_interruption.arn
+}
+
+resource "aws_cloudwatch_event_rule" "instance_rebalance" {
+  name        = "${var.project_name}-karpenter-rebalance"
+  description = "EC2 Instance Rebalance Recommendation para o Karpenter"
+
+  event_pattern = jsonencode({
+    source      = ["aws.ec2"]
+    detail-type = ["EC2 Instance Rebalance Recommendation"]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "instance_rebalance" {
+  rule      = aws_cloudwatch_event_rule.instance_rebalance.name
+  target_id = "KarpenterRebalance"
+  arn       = aws_sqs_queue.karpenter_interruption.arn
+}
+
+resource "aws_cloudwatch_event_rule" "instance_state_change" {
+  name        = "${var.project_name}-karpenter-state-change"
+  description = "EC2 Instance State Change para o Karpenter"
+
+  event_pattern = jsonencode({
+    source      = ["aws.ec2"]
+    detail-type = ["EC2 Instance State-change Notification"]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "instance_state_change" {
+  rule      = aws_cloudwatch_event_rule.instance_state_change.name
+  target_id = "KarpenterStateChange"
+  arn       = aws_sqs_queue.karpenter_interruption.arn
+}
+
+```
+
+---
+### iac_eks/modules/karpenter/node-pool.tf
+```hcl
+# ============================================================
+# NodePool + EC2NodeClass — Nodes de WORKLOAD (spot only)
+# Tudo que não é sistema (aplicações + observabilidade) vai aqui
+# ============================================================
+
+resource "kubernetes_manifest" "karpenter_ec2_node_class" {
+  manifest = {
+    apiVersion = "karpenter.k8s.aws/v1"
+    kind       = "EC2NodeClass"
+    metadata = {
+      name = "workload"
+    }
+    spec = {
+      # AMI otimizada para EKS — atualiza automaticamente com o cluster
+      amiSelectorTerms = [
+        {
+          alias = "al2023@latest" # Amazon Linux 2023 — recomendado para EKS 1.35+
+        }
+      ]
+
+      # Role que os nodes vão assumir (criada no iam.tf)
+      role = aws_iam_role.karpenter_node.name
+
+      # Apenas subnets PRIVADAS (seus nodes nunca ficam em subnet pública)
+      subnetSelectorTerms = [
+        { id = var.subnet_private_1a },
+        { id = var.subnet_private_1b }
+      ]
+
+      # Security Group do cluster (mesmo dos nodes do MGN)
+      securityGroupSelectorTerms = [
+        {
+          tags = {
+            "aws:eks:cluster-name" = var.cluster_name
+          }
+        }
+      ]
+
+      # Tags que serão aplicadas nas instâncias EC2 criadas
+      tags = merge(var.tags, {
+        "karpenter.sh/discovery" = var.cluster_name
+        "NodeType"               = "workload"
+      })
+
+      # Bloqueia acesso público ao metadata da instância — segurança
+      metadataOptions = {
+        httpEndpoint            = "enabled"
+        httpProtocolIPv6        = "disabled"
+        httpPutResponseHopLimit = 1 # Impede que pods acessem o IMDS diretamente
+        httpTokens              = "required" # Força IMDSv2
+      }
+    }
+  }
+
+  depends_on = [helm_release.karpenter]
+}
+
+resource "kubernetes_manifest" "karpenter_node_pool" {
+  manifest = {
+    apiVersion = "karpenter.sh/v1"
+    kind       = "NodePool"
+    metadata = {
+      name = "workload"
+    }
+    spec = {
+      template = {
+        metadata = {
+          labels = {
+            "node-type" = "workload" # Label para afinidade de pods
+          }
+        }
+        spec = {
+          nodeClassRef = {
+            group = "karpenter.k8s.aws"
+            kind  = "EC2NodeClass"
+            name  = "workload"
+          }
+
+          # Apenas SPOT — economiza créditos AWS
+          requirements = [
+            {
+              key      = "karpenter.sh/capacity-type"
+              operator = "In"
+              values   = ["spot"]
+            },
+            {
+              # Famílias de instâncias: boa relação custo/benefício para lab
+              # t3/t3a: baratas, boas para cargas variáveis (aplicações)
+              # m5/m5a: mais estáveis para observabilidade (Prometheus, Grafana)
+              key      = "node.kubernetes.io/instance-type"
+              operator = "In"
+              values = [
+                "t3.small",
+                "t3.medium",
+                "t3.large",
+                "t3a.small",
+                "t3a.medium",
+                "t3a.large",
+                "m5.large",
+                "m5a.large"
+              ]
+            },
+            {
+              # Apenas as AZs onde suas subnets privadas existem
+              key      = "topology.kubernetes.io/zone"
+              operator = "In"
+              values   = ["us-east-1a", "us-east-1b"]
+            },
+            {
+              key      = "kubernetes.io/arch"
+              operator = "In"
+              values   = ["amd64"]
+            },
+            {
+              key      = "kubernetes.io/os"
+              operator = "In"
+              values   = ["linux"]
+            }
+          ]
+
+          # Os nodes do workload NÃO têm o taint de sistema
+          # Então qualquer pod sem tolerations vem aqui automaticamente
+        }
+      }
+
+      # Limites do NodePool — evita surpresas de custo
+      limits = {
+        cpu    = "8"  # Máximo 8 vCPUs simultâneos no pool
+        memory = "16Gi"
+      }
+
+      # Consolidação: remove nodes ociosos para economizar
+      disruption = {
+        consolidationPolicy = "WhenEmptyOrUnderutilized"
+        consolidateAfter    = "30s"
+
+        # Janela de consolidação: evita interromper durante horário de trabalho
+        # Ajuste conforme sua necessidade
+        budgets = [
+          {
+            # Permite remover no máximo 20% dos nodes de uma vez
+            nodes = "20%"
+          }
+        ]
+      }
+    }
+  }
+
+  depends_on = [kubernetes_manifest.karpenter_ec2_node_class]
+}
+
+```
+
+---
+### iac_eks/modules/karpenter/outputs.tf
+```hcl
+output "karpenter_node_role_arn" {
+  value       = aws_iam_role.karpenter_node.arn
+  description = "ARN da IAM Role dos nodes criados pelo Karpenter"
+}
+
+output "karpenter_controller_role_arn" {
+  value       = aws_iam_role.karpenter_controller.arn
+  description = "ARN da IAM Role do controller do Karpenter (IRSA)"
+}
+
+output "karpenter_interruption_queue" {
+  value       = aws_sqs_queue.karpenter_interruption.name
+  description = "Nome da fila SQS de interrupção de spot"
+}
+
+```
+
+---
+### iac_eks/modules/karpenter/variables.tf
+```hcl
+variable "project_name" {
+  type        = string
+  description = "Nome do Projeto"
+}
+
+variable "tags" {
+  type        = map(any)
+  description = "Tags pertencentes aos recursos criados"
+}
+
+variable "cluster_name" {
+  type        = string
+  description = "Nome do Cluster EKS"
+}
+
+variable "cluster_endpoint" {
+  type        = string
+  description = "Endpoint da API do Cluster EKS"
+}
+
+variable "oidc" {
+  type        = string
+  description = "URL do OIDC Provider do Cluster (ex: https://oidc.eks.us-east-1.amazonaws.com/id/...)"
+}
+
+variable "subnet_private_1a" {
+  type        = string
+  description = "ID da Subnet Privada AZ us-east-1a"
+}
+
+variable "subnet_private_1b" {
+  type        = string
+  description = "ID da Subnet Privada AZ us-east-1b"
+}
+
+```
+
+---
 ### iac_eks/modules/managed-node-group/eks.tf
 ```hcl
 resource "aws_eks_node_group" "eks_managed_node_group" {
   cluster_name    = var.cluster_name
   node_group_name = "${var.project_name}-nodegroup"
   node_role_arn   = aws_iam_role.eks_eks_role.arn
-  instance_types  = ["t3.micro"]
+  instance_types  = ["t3.medium"] # Subindo de t3.micro — Karpenter precisa de CPU/mem
+
   subnet_ids = [
-    #Subnets privadas
     var.subnet_private_1a,
     var.subnet_private_1b
   ]
-  tags = merge(
-    var.tags,
-    {
-      Name = "${var.project_name}-nodegroup"
-    }
-  )
 
-# Argo consumindo muitos recursos, ajustar quantidade de máquinas? Refatorar código para especificar outra família de instâncias.
-# Obs.: Prometheus Statefulset, vai subir em todos os Nodes, o que pode consumir recursos desnecessários
+  tags = merge(var.tags, { Name = "${var.project_name}-nodegroup" })
+
   scaling_config {
-
-    desired_size = 3
-    max_size     = 4
+    desired_size = 2
+    max_size     = 2 # MGN fixo em 2 — Karpenter escala o resto
     min_size     = 2
   }
+
+  # ============================================================
+  # TAINT DE SISTEMA — garante que APENAS pods de sistema rodem
+  # aqui: kube-proxy, aws-node, coredns, karpenter
+  # Qualquer outro pod sem toleration vai para nodes do Karpenter
+  # ============================================================
+taint {
+  key    = "CriticalAddonsOnly"
+  value  = "true"
+  effect = "NO_SCHEDULE"
+}
+labels = {
+  "CriticalAddonsOnly" = "true"
+}
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_eks_role_attachment_worker,
@@ -2988,6 +3793,7 @@ resource "aws_eks_node_group" "eks_managed_node_group" {
     aws_iam_role_policy_attachment.eks_eks_role_attachment_cni
   ]
 }
+
 ```
 
 ---
@@ -3990,9 +4796,45 @@ kubectl config use-context  arn:aws:eks:us-east-1:749000351410:cluster/ppeks-clu
 Switched to context "arn:aws:eks:us-east-1:749000351410:cluster/ppeks-cluster".
 ```
 
+# MGN/Karpenter
+
+Validações:
+kubectl get ec2nodeclasses
+kubectl get nodepools
+
+Nodes que vão receber apenas pods do kube-proxy, aws-node, coredns, karpenter:
+
+![NODES](prints/image9.png)
+
+![EFFECT](prints/image8.png)
+
+Visão micro:
+
+![MGN](prints/image10.png)
+
+```
+1. Você faz deploy da sua app (helm install java-back)
+        ↓
+2. Pod fica em Pending — nenhum node disponível
+        ↓
+3. Karpenter detecta o pod Pending em segundos
+        ↓
+4. Lê o NodePool — quais instâncias spot são permitidas?
+        ↓
+5. Chama a API da AWS e provisiona uma EC2 spot
+        ↓
+6. Node entra no cluster (~60-90 segundos)
+        ↓
+7. Pod é agendado no novo node → Running ✅
+        ↓
+8. App fica ociosa por tempo configurado (ex: 30 min)
+        ↓
+9. Karpenter remove o node automaticamente → $ economizado
+```
+
 # Features
 
-Instalação manual via kubectl, do deploy de métricas, para coleta de informações de CPU e Memória de Nodes e Pods:
+1 - Instalação manual via kubectl, do deploy de métricas, para coleta de informações de CPU e Memória de Nodes e Pods:
 
 ```
 [carina@fedora pp_eks]$ k apply -f ./features/metrics.yaml
@@ -4078,68 +4920,20 @@ kube-system   kube-proxy-hhhgw                                1m           19Mi
 kube-system   metrics-server-df8589546-gr5gp                  3m           18Mi           
 
 ```
----
 
-# Banco de Dados
+2 - Gerar contexto para IA:
 
-Endpoint para conexão via DBeaver.
+bash features/dump_project.sh . meu_projeto_dump.txt
 
----
+3 - Verificação de recursos em execução na AWS após finalização do Laboratório:
 
-# Erros mapeados durante a construção do cluster
-
-1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acesso ao cluster.
-
-![ERRO](prints/image2.png)
-
-Solução:
-
-Como o ALB, embora seja uma implementação via Helm, faz a gerência de LBs (infra da AWS) a medida que acontece o "expose" dos deployments, a implementação do Controller que antes era feita via pipe no GitHub Actions, passou a ser feita via modulo no Terraform:
-
-```
-[carina@fedora pp_eks]$ tree ./iac_eks/modules/alb-controller/
-./iac_eks/modules/alb-controller/
-├── data.tf
-├── helm_alb.tf
-├── iam_policy.json
-├── iam.tf
-├── locals.tf
-├── policy.tf
-├── sa.tf
-└── variables.tf
-
-1 directory, 8 files
-```
-
-2 - IA não revisou "com assertividade" o meu código de criação do RDS, de modo que não tinha TFstate armazenado na AWS, deixando de fazer a gerência de criação/destruição dos recursos, como solicitado:
-
-![TFSTATE](prints/image5.png)
-
-Solução:
-
-"Feeling" ao perceber erros de recursos que já estavam criados. TFSTATE devidamente configurado:
-
-```
-    backend "s3" {
-    bucket = "arquivo-de-estado-tf1"
-    key    = "rds/terraform.tfstate"
-    region = "us-east-1"    
-  }
-```
+bash features/aws-resource-check.sh
 
 ---
 
-Deleção manual de recursos (despesas extras):
+# Lambda
 
-3 - Deletar Snashot RDS 
-2 - Deletar Imagens e ECRs
-3 - Deletar tfstate e RDS
-
----
-
-# Supérfluos
-
-1 - Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
+Criação de alguns recursos como uma Lambda, apenas para adição de créditos na conta AWS.
 
 A função Lambda `ppeks-health-check` é uma aplicação web serverless que atua como **ponto central de verificação de saúde** dos recursos da infraestrutura do projeto `ppeks`. Ela é exposta publicamente via **Function URL** — ou seja, gera um endpoint HTTP diretamente, sem necessidade de API Gateway.
 
@@ -4263,10 +5057,60 @@ curl https://<id>.lambda-url.us-east-1.on.aws/
 
 ---
 
-2 - Script que percorre arquivos .tf, para gerar contexto para IA, 
-redirecionando a saída para /tmp/tfsdump.txt:
+# Banco de Dados
 
-bash features/dump_project.sh . meu_projeto_dump.txt
+Endpoint para conexão via DBeaver.
+
+---
+
+# Erros mapeados durante a construção do cluster
+
+1 - Erro ao tentar instalar o ALB Controller via Helm, pois a role que o GitHub assumia, ao criar o cluster EKS não tinha permissão de acesso ao cluster.
+
+![ERRO](prints/image2.png)
+
+Solução:
+
+Como o ALB, embora seja uma implementação via Helm, faz a gerência de LBs (infra da AWS) a medida que acontece o "expose" dos deployments, a implementação do Controller que antes era feita via pipe no GitHub Actions, passou a ser feita via modulo no Terraform:
+
+```
+[carina@fedora pp_eks]$ tree ./iac_eks/modules/alb-controller/
+./iac_eks/modules/alb-controller/
+├── data.tf
+├── helm_alb.tf
+├── iam_policy.json
+├── iam.tf
+├── locals.tf
+├── policy.tf
+├── sa.tf
+└── variables.tf
+
+1 directory, 8 files
+```
+
+2 - IA não revisou "com assertividade" o meu código de criação do RDS, de modo que não tinha TFstate armazenado na AWS, deixando de fazer a gerência de criação/destruição dos recursos, como solicitado:
+
+![TFSTATE](prints/image5.png)
+
+Solução:
+
+"Feeling" ao perceber erros de recursos que já estavam criados. TFSTATE devidamente configurado:
+
+```
+    backend "s3" {
+    bucket = "arquivo-de-estado-tf1"
+    key    = "rds/terraform.tfstate"
+    region = "us-east-1"    
+  }
+```
+
+---
+
+Deleção manual de recursos (despesas extras):
+
+3 - Deletar Snashot RDS 
+2 - Deletar Imagens e ECRs
+3 - Deletar tfstate e RDS
 
 ---
 
@@ -4287,6 +5131,9 @@ Análise DevOps: /docs/Projeto_Anterior.md
 
 https://landscape.cncf.io/
 
+
+![alt text](prints/image11.png)
+
 ---
 
 # Badge CKA
@@ -4298,6 +5145,9 @@ https://landscape.cncf.io/
 # Badge AWS
 
 ![alt text](prints/image6.png)
+
+---
+
 ```
 
 ---
@@ -4580,5 +5430,5 @@ requests==2.32.3
 ```
 
 =================================================================
-  FIM DO DUMP — 89 arquivos capturados
+  FIM DO DUMP — 95 arquivos capturados
 =================================================================
