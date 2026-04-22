@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir \
     setuptools \
     opentelemetry-distro==0.47b0 \
-    opentelemetry-exporter-otlp==0.47b0 \
+    opentelemetry-exporter-otlp==1.26.0 \
     -r requirements.txt
 
 RUN opentelemetry-bootstrap --action=install
