@@ -1,3 +1,14 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Workflow 4 — Deploy/Destroy do RDS PostgreSQL
+#
+# CORREÇÃO APLICADA:
+#   Adicionado step de pré-limpeza antes do Apply que remove o DB Subnet Group
+#   órfão caso ele exista na AWS fora do tfstate (resultado de destroy
+#   incompleto em execução anterior).
+#
+#   Os parâmetros SSM não precisam de limpeza aqui pois foram corrigidos
+#   diretamente no Terraform com overwrite = true no ssm-parameters.tf.
+# ─────────────────────────────────────────────────────────────────────────────
 name: "4 - Deploy/Destroy do RDS PostgreSQL"
 
 on:
@@ -16,6 +27,7 @@ jobs:
         shell: bash
 
     steps:
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -35,29 +47,39 @@ jobs:
         id: read-destroy-config
         run: |
           DESTROY="$(jq -r '.boolean' ./rds/destroy_config.json)"
-          echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
+          echo "destroy=${DESTROY}" >> $GITHUB_OUTPUT
 
       - name: Terraform Init
-        run: |
-          cd rds && terraform init
+        run: cd rds && terraform init
 
       - name: Terraform Validate
         run: cd rds && terraform validate
 
+      # ── Pré-limpeza — roda APENAS no modo Apply ───────────────────────────
+      # O DB Subnet Group não pode ser sobrescrito pelo Terraform — se já
+      # existir na AWS fora do tfstate, o apply falha com DBSubnetGroupAlreadyExists.
+      # A solução é deletar antes do apply. O "|| true" garante que se não
+      # existir, o step não falha.
+      - name: Limpar DB Subnet Group órfão antes do Apply
+        if: steps.read-destroy-config.outputs.destroy != 'true'
+        run: |
+          echo ">> Verificando e removendo DB Subnet Group órfão..."
+          aws rds delete-db-subnet-group \
+            --db-subnet-group-name ppeks-rds-subnet-group \
+            2>/dev/null || true
+          echo ">> Pronto."
+
       - name: Terraform Destroy
         if: steps.read-destroy-config.outputs.destroy == 'true'
         id: terraform-destroy
-        run: |
-          cd rds && terraform destroy -auto-approve
+        run: cd rds && terraform destroy -auto-approve
 
       - name: Terraform Plan
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-plan
-        run: |
-          cd rds && terraform plan -out="prd.plan"
+        run: cd rds && terraform plan -out="prd.plan"
 
       - name: Terraform Apply
         if: steps.read-destroy-config.outputs.destroy != 'true'
         id: terraform-apply
-        run: |
-          cd rds && terraform apply -auto-approve
+        run: cd rds && terraform apply -auto-approve
