@@ -11,7 +11,7 @@ image:
   # Formato: <account_id>.dkr.ecr.<region>.amazonaws.com/<repo>
   repository: 749000351410.dkr.ecr.us-east-1.amazonaws.com/frontpy
   # Tag atualizada automaticamente pela pipeline de build (3-img-front-py.yaml)
-  tag: "20251123214408"
+  tag: "20260422021741"
   # IfNotPresent: só faz pull se a imagem ainda não existir no node.
   # Evita pulls desnecessários quando a tag não muda.
   pullPolicy: IfNotPresent
