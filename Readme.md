@@ -459,7 +459,7 @@ Deleção manual de recursos (despesas extras):
 
 3 - Script que ao final do laboratório pode ser executado para validar se ficou algum recurso que não foi deletado gerando custos inesperados:
 
-features/aws-resource-check.sh
+bash features/aws-resource-check.sh
 
 ---
 
