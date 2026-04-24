@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: "749000351410.dkr.ecr.us-east-1.amazonaws.com/back_java"
-  tag: "20260422015038" # Dica do Fabiano na primeira entrevista, deixar latest para não conflitar na edição do Git.
+  tag: "20260424222344" # Dica do Fabiano na primeira entrevista, deixar latest para não conflitar na edição do Git.
   pullPolicy: IfNotPresent
 
 service: # Melhor estratégia para expor o serviço? Certificação AWS...
