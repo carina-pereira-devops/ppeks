@@ -1,0 +1,354 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Workflow 7 — Instalação do Istio + Gateway + VirtualService + Ingress
+#
+# ORDEM DE EXECUÇÃO OBRIGATÓRIA:
+#   1-infra-eks.yaml → 4-infra-rds.yaml → 6-back-java.yaml
+#   → 7-istio.yaml (ESTE) → 8-front-py.yaml
+#
+# O QUE ESTE WORKFLOW FAZ:
+#   1. Adiciona o repositório Helm oficial do Istio
+#   2. Limpa releases em estado problemático (failed/pending) com segurança
+#   3. Instala istio-base  → CRDs da malha (Gateway, VirtualService, etc.)
+#   4. Aguarda CRDs propagarem no API server
+#   5. Instala istiod      → control plane (Pilot + Citadel + Galley)
+#   6. Aguarda istiod ficar Ready antes de continuar
+#   7. Instala istio-ingressgateway como NodePort (ALB controlado pelo Ingress)
+#   8. Labela appback e appfront para injeção automática do sidecar Envoy
+#   9. Reinicia o java-back para receber o sidecar (rodava sem ele)
+#  10. Aplica Gateway, VirtualService e Ingress dos charts do projeto
+#  11. Validação final de todos os componentes
+#
+# ARQUITETURA DE TRÁFEGO:
+#   Internet → ALB (gerenciado pelo Ingress + ALB Controller)
+#           → Istio Ingress Gateway Pod (NodePort, namespace istio-system)
+#           → front-py Pod (2/2: app + istio-proxy)
+#           → java-back Pod (2/2: app + istio-proxy)
+#           → RDS PostgreSQL (subnet privada)
+#
+# POR QUE NodePort e não LoadBalancer no Gateway?
+#   Se type=LoadBalancer, o Istio criaria seu próprio ALB → teríamos 2 ALBs.
+#   Com NodePort, o nosso Ingress (annotations ALB Controller) aponta para o
+#   Gateway via NodePort. Resultado: 1 ALB, controlado por nós, com todas as
+#   nossas annotations (certificado, health check, target type, etc.)
+#
+# PRÉ-REQUISITOS:
+#   - Cluster ppeks-cluster rodando (workflow 1)
+#   - ALB Controller instalado (workflow 1)
+#   - Karpenter rodando — irá provisionar nodes Spot para o Istio
+#   - Backend java-back rodando em appback (workflow 6)
+#   - Porta 15017 aberta no SG dos nodes (webhook de injeção do istiod)
+#   - Porta 15012 aberta no SG dos nodes (comunicação istiod ↔ sidecar)
+#
+# VERSÃO DO ISTIO: 1.23.5 (compatível com Kubernetes 1.35)
+# ─────────────────────────────────────────────────────────────────────────────
+name: "7 - Instalação do Istio"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  istio:
+    name: Install Istio
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Autenticação AWS via OIDC ────────────────────────────────────────
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::749000351410:role/github-carina-devops-pipe
+          aws-region: us-east-1
+
+      # ── 3. Atualizar kubeconfig ─────────────────────────────────────────────
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ppeks-cluster --region us-east-1
+          kubectl cluster-info
+
+      # ── 4. Adicionar repositório Helm do Istio ──────────────────────────────
+      # URL oficial: https://istio-release.storage.googleapis.com/charts
+      # Sempre fixamos a versão — nunca "latest" em infra gerenciada.
+      - name: Add Istio Helm repository
+        run: |
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo update
+          echo ">> Versões disponíveis do Istio:"
+          helm search repo istio/base --versions | head -5
+
+      # ── 5. Criar namespace istio-system ─────────────────────────────────────
+      # Todos os componentes do Istio rodam neste namespace.
+      # --dry-run=client + apply torna o comando idempotente (não falha se já existe).
+      - name: Create istio-system namespace
+        run: |
+          kubectl create namespace istio-system --dry-run=client -o yaml | kubectl apply -f -
+
+      # ── 6. Limpar releases Istio em estado problemático ──────────────────────
+      # PROBLEMA: "helm status <release>" retorna exit code 1 quando o release
+      # não existe. Com "set -e -o pipefail" ativo no GitHub Actions, isso mata
+      # o step inteiro mesmo com "2>/dev/null".
+      #
+      # SOLUÇÃO: "helm list -n istio-system -o json" retorna SEMPRE exit code 0
+      # e entrega todos os releases em JSON. Usamos jq para filtrar o status
+      # de cada release — sem nenhum risco de exit code inesperado.
+      #
+      # Ordem de remoção (reversa às dependências):
+      #   istio-ingressgateway → istiod → istio-base
+      - name: Limpar releases Istio em estado problemático
+        run: |
+          RELEASES_JSON=$(helm list -n istio-system -o json 2>/dev/null || echo "[]")
+          echo ">> Releases encontrados em istio-system:"
+          echo "$RELEASES_JSON" | jq -r '.[] | "\(.name): \(.status)"' 2>/dev/null || echo "(nenhum)"
+
+          for release in istio-ingressgateway istiod istio-base; do
+            STATUS=$(echo "$RELEASES_JSON"               | jq -r ".[] | select(.name=="$release") | .status" 2>/dev/null || echo "")
+
+            echo ">> Release '$release': status='${STATUS:-não instalado}'"
+
+            if [ "$STATUS" = "failed" ] ||                [ "$STATUS" = "pending-install" ] ||                [ "$STATUS" = "pending-upgrade" ]; then
+              echo ">> Removendo release '$release' em estado problemático..."
+              helm uninstall "$release" -n istio-system 2>/dev/null || true
+              sleep 5
+              echo ">> Release '$release' removido."
+            else
+              echo ">> Release '$release' ok ou não instalado — sem ação."
+            fi
+          done
+
+          echo ">> Verificação de limpeza concluída."
+
+      # ── 7. Instalar istio-base (CRDs) ───────────────────────────────────────
+      # O istio-base instala APENAS os CRDs — nenhum Pod é criado aqui.
+      # CRDs instalados:
+      #   Gateway         → define ponto de entrada na malha
+      #   VirtualService  → define regras de roteamento interno
+      #   DestinationRule → políticas de tráfego (retries, circuit breaker)
+      #   PeerAuthentication → mTLS entre serviços
+      #   AuthorizationPolicy → autorização entre serviços
+      #
+      # --wait garante que o Helm só avança quando os CRDs estão registrados.
+      # DEVE ser instalado ANTES do istiod — ele depende desses CRDs.
+      - name: Install istio-base (CRDs)
+        run: |
+          helm upgrade --install istio-base istio/base             --namespace istio-system             --version 1.23.5             --set defaultRevision=default             --wait             --timeout 3m
+
+          echo ">> CRDs do Istio registrados no cluster:"
+          kubectl get crd | grep istio.io
+
+      # ── 8. Aguardar CRDs propagarem no API server ───────────────────────────
+      # O --wait do Helm confirma que o chart foi aplicado pelo Kubernetes,
+      # mas o API server ainda pode levar alguns segundos para propagar
+      # internamente os novos tipos de recursos.
+      # Se o istiod iniciar antes disso, o webhook falha ao tentar validar
+      # recursos do tipo Gateway ou VirtualService.
+      #
+      # kubectl wait --for=condition=established → aguarda cada CRD individual
+      # sleep 30 → margem de segurança para propagação completa
+      - name: Aguardar CRDs do Istio propagarem no API server
+        run: |
+          echo ">> Aguardando CRDs críticos ficarem 'established'..."
+          kubectl wait --for=condition=established             crd/virtualservices.networking.istio.io             crd/gateways.networking.istio.io             crd/destinationrules.networking.istio.io             crd/peerauthentications.security.istio.io             --timeout=60s
+
+          echo ">> CRDs established. Aguardando 30s para propagação no API server..."
+          sleep 30
+          echo ">> Propagação concluída. Prosseguindo para o istiod."
+
+      # ── 9. Instalar istiod (control plane) ──────────────────────────────────
+      # O istiod é o cérebro do Istio — roda como um único Deployment.
+      # Três funções internas:
+      #
+      #   Pilot   → lê os recursos (Gateway, VirtualService, DestinationRule)
+      #             e distribui a configuração de roteamento para todos os
+      #             sidecars Envoy via xDS protocol (gRPC, porta 15010/15012)
+      #
+      #   Citadel → emite e rotaciona certificados TLS para cada workload.
+      #             Esses certs habilitam o mTLS automático entre os Pods
+      #             sem nenhuma configuração na aplicação.
+      #
+      #   Galley  → valida os manifests antes de aplicar (admission webhook
+      #             na porta 15017 — por isso ela deve estar aberta no SG)
+      #
+      # pilot.autoscaleEnabled=false + replicaCount=1 → economia para lab.
+      # proxy.resources.requests reduzidos → nodes Spot menores são suficientes.
+      - name: Install istiod (control plane)
+        run: |
+          helm upgrade --install istiod istio/istiod             --namespace istio-system             --version 1.23.5             --set pilot.autoscaleEnabled=false             --set pilot.replicaCount=1             --set global.proxy.resources.requests.cpu=10m             --set global.proxy.resources.requests.memory=40Mi             --wait             --timeout 5m
+
+          echo ">> Pods em istio-system após istiod:"
+          kubectl get pods -n istio-system
+
+      # ── 10. Aguardar istiod ficar Ready ─────────────────────────────────────
+      # O --wait do Helm garante que o Deployment foi criado, mas o Pod do
+      # istiod precisa estar READY para o MutatingWebhook de injeção funcionar.
+      # Se o ingressgateway subir antes, ele não receberá o sidecar Envoy.
+      #
+      # sleep 15 → aguarda o webhook do istiod se registrar no API server.
+      - name: Aguardar istiod ficar Ready
+        run: |
+          echo ">> Aguardando rollout do istiod..."
+          kubectl rollout status deployment/istiod             -n istio-system             --timeout=3m
+
+          echo ">> istiod Ready. Aguardando 15s para webhook estabilizar..."
+          sleep 15
+          echo ">> Webhook do istiod disponível."
+
+      # ── 11. Instalar Istio Ingress Gateway ──────────────────────────────────
+      # O Ingress Gateway é um Pod Envoy na borda da malha.
+      # É o primeiro ponto dentro do cluster que recebe tráfego externo.
+      #
+      # Por que service.type=NodePort?
+      #   - LoadBalancer: o Istio criaria um segundo ALB via AWS → 2 ALBs, custo duplo.
+      #   - NodePort: o nosso Ingress Kubernetes (gerenciado pelo ALB Controller)
+      #     aponta para a porta NodePort do Gateway.
+      #   - Resultado: 1 ALB nosso, com nossas annotations (TLS, health check,
+      #     scheme, target-type ip), apontando para o Istio Gateway.
+      #
+      # replicaCount=1 → suficiente para lab, Karpenter sobe o node necessário.
+      - name: Install Istio Ingress Gateway
+        run: |
+          helm upgrade --install istio-ingressgateway istio/gateway             --namespace istio-system             --version 1.23.5             --set service.type=NodePort             --set replicaCount=1             --wait             --timeout 5m
+
+          echo ">> Pods em istio-system após ingressgateway:"
+          kubectl get pods -n istio-system
+
+          echo ">> Services em istio-system (NodePort esperado):"
+          kubectl get svc -n istio-system
+
+      # ── 12. Labela namespaces para injeção automática do sidecar ────────────
+      # A label "istio-injection=enabled" instrui o istiod a interceptar a
+      # criação de todo Pod no namespace via MutatingAdmissionWebhook.
+      #
+      # O que o istiod injeta automaticamente em cada Pod:
+      #   initContainer "istio-init"  → configura iptables para redirecionar
+      #                                 TODO o tráfego de rede pelo Envoy
+      #   container "istio-proxy"     → Envoy que intercepta, observa e
+      #                                 gerencia o tráfego da aplicação
+      #
+      # Após a injeção, cada Pod aparece como READY 2/2:
+      #   container 1: sua aplicação (front-py ou java-back)
+      #   container 2: istio-proxy (Envoy)
+      #
+      # IMPORTANTE: Pods que já existiam NÃO são reinjetados automaticamente.
+      # O step 13 faz rollout restart no java-back para corrigir isso.
+      - name: Labela namespaces para injeção automática do sidecar
+        run: |
+          kubectl create namespace appback  --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace appfront --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl label namespace appback  istio-injection=enabled --overwrite
+          kubectl label namespace appfront istio-injection=enabled --overwrite
+
+          echo ">> Labels de injeção aplicadas:"
+          kubectl get namespace appback appfront --show-labels
+
+      # ── 13. Reiniciar backend para injetar o sidecar ────────────────────────
+      # O java-back foi deployado pelo workflow 6, ANTES do Istio existir.
+      # Portanto, está rodando sem o sidecar Envoy:
+      #   - Não participa da malha de serviço
+      #   - Não tem mTLS com o front-py
+      #   - Não aparece no Kiali / Jaeger
+      #   - Não tem métricas de tráfego Istio
+      #
+      # kubectl rollout restart: deleta os Pods antigos e cria novos.
+      # Os novos sobem com o namespace já labelado → istiod injeta o sidecar.
+      # Após o restart, o Pod estará READY 2/2 (java-back + istio-proxy).
+      - name: Reiniciar backend java-back para injetar sidecar
+        run: |
+          echo ">> Reiniciando java-back (appback) para injetar sidecar Envoy..."
+          kubectl rollout restart deployment/java-back -n appback
+
+          echo ">> Aguardando rollout completar..."
+          kubectl rollout status deployment/java-back             -n appback             --timeout=3m
+
+          echo ">> Verificando injeção do sidecar (esperado READY 2/2):"
+          kubectl get pods -n appback
+
+      # ── 14. Aplicar manifests do Istio (Gateway, VirtualService, Ingress) ───
+      # Os três recursos que conectam o ALB ao roteamento interno da malha.
+      #
+      # gateway.yaml       → define que o Istio Ingress Gateway aceita tráfego
+      #                       HTTP/HTTPS na porta 80/443 de qualquer host
+      #
+      # virtualservice.yaml → define as regras de roteamento dentro da malha:
+      #                        /      → front-py (appfront)
+      #                        /api/* → java-back (appback)
+      #
+      # ingress.yaml        → recurso Kubernetes Ingress com annotations do ALB
+      #                       Controller. Cria o ALB AWS e aponta para o NodePort
+      #                       do Istio Ingress Gateway.
+      #
+      # Esses arquivos ficam em charts/istio/templates/ e são aplicados via
+      # kubectl (não Helm) pois são configuração de malha, não infra de cluster.
+      - name: Aplicar Gateway, VirtualService e Ingress
+        run: |
+          echo ">> Aplicando Gateway..."
+          kubectl apply -f charts/istio/templates/gateway.yaml
+
+          echo ">> Aplicando VirtualService..."
+          kubectl apply -f charts/istio/templates/virtualservice.yaml
+
+          echo ">> Aplicando Ingress (ALB)..."
+          kubectl apply -f charts/istio/templates/ingress.yaml
+
+          echo ""
+          echo ">> Recursos aplicados:"
+          kubectl get gateway        -A
+          kubectl get virtualservice -A
+          kubectl get ingress        -A
+
+      # ── 15. Validação final ─────────────────────────────────────────────────
+      # Confirma que todos os componentes estão Running/Ready antes de encerrar.
+      # O DNS do ALB aparece na coluna ADDRESS do Ingress — pode levar ~60s
+      # para ser provisionado pela AWS após a criação do Ingress.
+      - name: Validação final
+        run: |
+          echo "============================================"
+          echo "=== Pods em istio-system               ==="
+          echo "============================================"
+          kubectl get pods -n istio-system -o wide
+
+          echo ""
+          echo "============================================"
+          echo "=== Services em istio-system           ==="
+          echo "============================================"
+          kubectl get svc -n istio-system
+
+          echo ""
+          echo "============================================"
+          echo "=== Pods appback (esperado: READY 2/2) ==="
+          echo "============================================"
+          kubectl get pods -n appback
+
+          echo ""
+          echo "============================================"
+          echo "=== Namespace labels (injeção Istio)   ==="
+          echo "============================================"
+          kubectl get namespace appback appfront --show-labels
+
+          echo ""
+          echo "============================================"
+          echo "=== Ingress (aguardar ADDRESS do ALB)  ==="
+          echo "============================================"
+          kubectl get ingress -A
+
+          echo ""
+          echo "============================================"
+          echo "=== Releases Helm instalados           ==="
+          echo "============================================"
+          helm list -n istio-system
+
+          echo ""
+          echo "✅ Workflow 7 concluído."
+          echo "   Próximo passo: executar o workflow 8 (deploy do front-py)."
+          echo "   O front-py subirá já com o sidecar Envoy injetado (READY 2/2)."
